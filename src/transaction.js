@@ -26,6 +26,14 @@ function Transaction () {
   this.locktime = 0
   this.ins = []
   this.outs = []
+  // ZCash version >= 2
+  this.joinsplits = []
+  this.joinsplitPubkey = []
+  this.joinsplitSig = []
+  // ZCash version >= 3
+  this.overwintered = 0
+  this.versionGroupId = 0  // 0x03C48270 for overwinter
+  this.expiryHeight = 0
 }
 
 Transaction.DEFAULT_SEQUENCE = 0xffffffff
@@ -49,11 +57,24 @@ var BLANK_OUTPUT = {
   valueBuffer: VALUE_UINT64_MAX
 }
 
-Transaction.fromBuffer = function (buffer, __noStrict) {
+Transaction.ZCASH_NUM_JS_INPUTS = 2
+Transaction.ZCASH_NUM_JS_OUTPUTS = 2
+Transaction.ZCASH_NOTECIPHERTEXT_SIZE = 1 + 8 + 32 + 32 + 512 + 16
+
+Transaction.ZCASH_G1_PREFIX_MASK = 0x02
+Transaction.ZCASH_G2_PREFIX_MASK = 0x0a
+
+Transaction.fromBuffer = function (buffer, zcash, __noStrict) {
   var offset = 0
   function readSlice (n) {
     offset += n
     return buffer.slice(offset - n, offset)
+  }
+
+  function readUInt8 () {
+    var i = buffer.readUInt8(offset)
+    offset += 1
+    return i
   }
 
   function readUInt32 () {
@@ -91,17 +112,46 @@ Transaction.fromBuffer = function (buffer, __noStrict) {
     return vector
   }
 
+  function readCompressedG1 () {
+    var yLsb = readUInt8() & 1
+    var x = readSlice(32)
+    return {
+      x: x,
+      yLsb: yLsb
+    }
+  }
+
+  function readCompressedG2 () {
+    var yLsb = readUInt8() & 1
+    var x = readSlice(64)
+    return {
+      x: x,
+      yLsb: yLsb
+    }
+  }
+
   var tx = new Transaction()
   tx.version = readInt32()
+
+  if (zcash) {
+    // Split the header into fOverwintered and nVersion
+    tx.overwintered = tx.version >>> 31  // Must be 1 for version 3 and up
+    tx.version = tx.version & 0x07FFFFFFF  // 3 for overwinter
+  }
 
   var marker = buffer.readUInt8(offset)
   var flag = buffer.readUInt8(offset + 1)
 
   var hasWitnesses = false
   if (marker === Transaction.ADVANCED_TRANSACTION_MARKER &&
-      flag === Transaction.ADVANCED_TRANSACTION_FLAG) {
+      flag === Transaction.ADVANCED_TRANSACTION_FLAG &&
+      !zcash) {
     offset += 2
     hasWitnesses = true
+  }
+
+  if (zcash && tx.version >= 3) {
+    tx.versionGroupId = readUInt32()
   }
 
   var vinLen = readVarInt()
@@ -134,14 +184,75 @@ Transaction.fromBuffer = function (buffer, __noStrict) {
 
   tx.locktime = readUInt32()
 
+  if (zcash && tx.version >= 3) {
+    tx.expiryHeight = readUInt32()
+  }
+
+  if (zcash && tx.version >= 2) {
+    var jsLen = readVarInt()
+    for (i = 0; i < jsLen; ++i) {
+      var vpubOld = readUInt64()
+      var vpubNew = readUInt64()
+      var anchor = readSlice(32)
+      var nullifiers = []
+      for (var j = 0; j < Transaction.ZCASH_NUM_JS_INPUTS; j++) {
+        nullifiers.push(readSlice(32))
+      }
+      var commitments = []
+      for (j = 0; j < Transaction.ZCASH_NUM_JS_OUTPUTS; j++) {
+        commitments.push(readSlice(32))
+      }
+      var ephemeralKey = readSlice(32)
+      var randomSeed = readSlice(32)
+      var macs = []
+      for (j = 0; j < Transaction.ZCASH_NUM_JS_INPUTS; j++) {
+        macs.push(readSlice(32))
+      }
+      // TODO what are those exactly? Can it be expressed by BigNum?
+      var zproof = {
+        gA: readCompressedG1(),
+        gAPrime: readCompressedG1(),
+        gB: readCompressedG2(),
+        gBPrime: readCompressedG1(),
+        gC: readCompressedG1(),
+        gCPrime: readCompressedG1(),
+        gK: readCompressedG1(),
+        gH: readCompressedG1()
+      }
+      var ciphertexts = []
+      for (j = 0; j < Transaction.ZCASH_NUM_JS_OUTPUTS; j++) {
+        ciphertexts.push(readSlice(Transaction.ZCASH_NOTECIPHERTEXT_SIZE))
+      }
+
+      tx.joinsplits.push({
+        vpubOld: vpubOld,
+        vpubNew: vpubNew,
+        anchor: anchor,
+        nullifiers: nullifiers,
+        commitments: commitments,
+        ephemeralKey: ephemeralKey,
+        randomSeed: randomSeed,
+        macs: macs,
+        zproof: zproof,
+        ciphertexts: ciphertexts
+      })
+    }
+    if (jsLen > 0) {
+      tx.joinsplitPubkey = readSlice(32)
+      tx.joinsplitSig = readSlice(64)
+    }
+  }
+
+  tx.zcash = !!zcash
+
   if (__noStrict) return tx
   if (offset !== buffer.length) throw new Error('Transaction has unexpected data')
 
   return tx
 }
 
-Transaction.fromHex = function (hex) {
-  return Transaction.fromBuffer(Buffer.from(hex, 'hex'))
+Transaction.fromHex = function (hex, zcash) {
+  return Transaction.fromBuffer(Buffer.from(hex, 'hex'), zcash)
 }
 
 Transaction.isCoinbaseHash = function (buffer) {
@@ -208,6 +319,34 @@ Transaction.prototype.byteLength = function () {
   return this.__byteLength(true)
 }
 
+Transaction.prototype.joinsplitByteLength = function () {
+  if (!this.fOverwintered && this.version < 2) {
+    return 0
+  }
+
+  if (!this.zcash) {
+    return 0
+  }
+
+  var pubkeySigLength = (this.joinsplits.length > 0) ? (32 + 64) : 0
+  return (
+    bufferutils.varIntSize(this.joinsplits.length) +
+    this.joinsplits.reduce(function (sum, joinsplit) {
+      return (
+        sum +
+        8 + 8 + 32 +
+        joinsplit.nullifiers.length * 32 +
+        joinsplit.commitments.length * 32 +
+        32 + 32 +
+        joinsplit.macs.length * 32 +
+        65 + 33 * 7 +
+        joinsplit.ciphertexts.length * Transaction.ZCASH_NOTECIPHERTEXT_SIZE
+      )
+    }, 0) +
+    pubkeySigLength
+  )
+}
+
 Transaction.prototype.__byteLength = function (__allowWitness) {
   var hasWitnesses = __allowWitness && this.hasWitnesses()
 
@@ -217,7 +356,8 @@ Transaction.prototype.__byteLength = function (__allowWitness) {
     varuint.encodingLength(this.outs.length) +
     this.ins.reduce(function (sum, input) { return sum + 40 + varSliceSize(input.script) }, 0) +
     this.outs.reduce(function (sum, output) { return sum + 8 + varSliceSize(output.script) }, 0) +
-    (hasWitnesses ? this.ins.reduce(function (sum, input) { return sum + vectorSize(input.witness) }, 0) : 0)
+    (hasWitnesses ? this.ins.reduce(function (sum, input) { return sum + vectorSize(input.witness) }, 0) : 0) +
+    this.joinsplitByteLength()
   )
 }
 
@@ -225,6 +365,13 @@ Transaction.prototype.clone = function () {
   var newTx = new Transaction()
   newTx.version = this.version
   newTx.locktime = this.locktime
+  newTx.zcash = this.zcash
+
+  if (this.zcash && this.version >= 3) {
+    newTx.overwintered = this.overwintered
+    newTx.versionGroupId = this.versionGroupId
+    newTx.expiryHeight = this.expiryHeight
+  }
 
   newTx.ins = this.ins.map(function (txIn) {
     return {
@@ -278,7 +425,7 @@ Transaction.prototype.hashForSignature = function (inIndex, prevOutScript, hashT
       input.sequence = 0
     })
 
-  // SIGHASH_SINGLE: ignore all outputs, except at the same index?
+    // SIGHASH_SINGLE: ignore all outputs, except at the same index?
   } else if ((hashType & 0x1f) === Transaction.SIGHASH_SINGLE) {
     // https://github.com/bitcoin/bitcoin/blob/master/src/test/sighash_tests.cpp#L60
     if (inIndex >= this.outs.length) return ONE
@@ -304,7 +451,7 @@ Transaction.prototype.hashForSignature = function (inIndex, prevOutScript, hashT
     txTmp.ins = [txTmp.ins[inIndex]]
     txTmp.ins[0].script = ourScript
 
-  // SIGHASH_ALL: only ignore input scripts
+    // SIGHASH_ALL: only ignore input scripts
   } else {
     // "blank" others input scripts
     txTmp.ins.forEach(function (input) { input.script = EMPTY_SCRIPT })
@@ -349,8 +496,8 @@ Transaction.prototype.hashForWitnessV0 = function (inIndex, prevOutScript, value
   }
 
   if (!(hashType & Transaction.SIGHASH_ANYONECANPAY) &&
-       (hashType & 0x1f) !== Transaction.SIGHASH_SINGLE &&
-       (hashType & 0x1f) !== Transaction.SIGHASH_NONE) {
+    (hashType & 0x1f) !== Transaction.SIGHASH_SINGLE &&
+    (hashType & 0x1f) !== Transaction.SIGHASH_NONE) {
     tbuffer = Buffer.allocUnsafe(4 * this.ins.length)
     toffset = 0
 
@@ -362,7 +509,7 @@ Transaction.prototype.hashForWitnessV0 = function (inIndex, prevOutScript, value
   }
 
   if ((hashType & 0x1f) !== Transaction.SIGHASH_SINGLE &&
-      (hashType & 0x1f) !== Transaction.SIGHASH_NONE) {
+    (hashType & 0x1f) !== Transaction.SIGHASH_NONE) {
     var txOutsSize = this.outs.reduce(function (sum, output) {
       return sum + 8 + varSliceSize(output.script)
     }, 0)
@@ -486,6 +633,16 @@ Transaction.prototype.__toBuffer = function (buffer, initialOffset, __allowWitne
   function writeVarSlice (slice) { writeVarInt(slice.length); writeSlice(slice) }
   function writeVector (vector) { writeVarInt(vector.length); vector.forEach(writeVarSlice) }
 
+  function writeCompressedG1 (i) {
+    writeUInt8(Transaction.ZCASH_G1_PREFIX_MASK | i.yLsb)
+    writeSlice(i.x)
+  }
+
+  function writeCompressedG2 (i) {
+    writeUInt8(Transaction.ZCASH_G2_PREFIX_MASK | i.yLsb)
+    writeSlice(i.x)
+  }
+
   writeInt32(this.version)
 
   var hasWitnesses = __allowWitness && this.hasWitnesses()
@@ -522,6 +679,45 @@ Transaction.prototype.__toBuffer = function (buffer, initialOffset, __allowWitne
   }
 
   writeUInt32(this.locktime)
+
+  if (this.version >= 3 && this.zcash) {
+    writeUInt32(this.expiryHeight)
+  }
+
+  if (this.version >= 2 && this.zcash) {
+    writeVarInt(this.joinsplits.length)
+    this.joinsplits.forEach(function (joinsplit) {
+      writeUInt64(joinsplit.vpubOld)
+      writeUInt64(joinsplit.vpubNew)
+      writeSlice(joinsplit.anchor)
+      joinsplit.nullifiers.forEach(function (nullifier) {
+        writeSlice(nullifier)
+      })
+      joinsplit.commitments.forEach(function (nullifier) {
+        writeSlice(nullifier)
+      })
+      writeSlice(joinsplit.ephemeralKey)
+      writeSlice(joinsplit.randomSeed)
+      joinsplit.macs.forEach(function (nullifier) {
+        writeSlice(nullifier)
+      })
+      writeCompressedG1(joinsplit.zproof.gA)
+      writeCompressedG1(joinsplit.zproof.gAPrime)
+      writeCompressedG2(joinsplit.zproof.gB)
+      writeCompressedG1(joinsplit.zproof.gBPrime)
+      writeCompressedG1(joinsplit.zproof.gC)
+      writeCompressedG1(joinsplit.zproof.gCPrime)
+      writeCompressedG1(joinsplit.zproof.gK)
+      writeCompressedG1(joinsplit.zproof.gH)
+      joinsplit.ciphertexts.forEach(function (ciphertext) {
+        writeSlice(ciphertext)
+      })
+    })
+    if (this.joinsplits.length > 0) {
+      writeSlice(this.joinsplitPubkey)
+      writeSlice(this.joinsplitSig)
+    }
+  }
 
   // avoid slicing unless necessary
   if (initialOffset !== undefined) return buffer.slice(initialOffset, offset)

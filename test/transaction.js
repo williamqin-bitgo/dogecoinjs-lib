@@ -87,6 +87,24 @@ describe('Transaction', function () {
     })
   })
 
+  describe('fromBuffer/fromHex for Zcash', function () {
+    fixtures.zcash.valid.forEach(function (testData) {
+      it('imports ' + testData.description, function () {
+        var tx = Transaction.fromHex(testData.hex, true)
+        assert.equal(tx.version, testData.version)
+        assert.equal(tx.versionGroupId, testData.versionGroupId)
+        assert.equal(tx.overwintered, testData.overwintered)
+        assert.equal(tx.locktime, testData.locktime)
+        assert.equal(tx.expiryHeight, testData.expiryHeight)
+        assert.equal(tx.ins.length, testData.insLength)
+        assert.equal(tx.outs.length, testData.outsLength)
+        assert.equal(tx.joinsplits.length, testData.joinsplitsLength)
+        assert.equal(tx.joinsplitPubkey.length, testData.joinsplitPubkeyLength)
+        assert.equal(tx.joinsplitSig.length, testData.joinsplitSigLength)
+      })
+    })
+  })
+
   describe('toBuffer/toHex', function () {
     fixtures.valid.forEach(function (f) {
       it('exports ' + f.description + ' (' + f.id + ')', function () {
