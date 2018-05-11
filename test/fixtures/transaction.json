@@ -946,9 +946,6 @@
         "joinsplitPubkeyLength": 0,
         "joinsplitSigLength": 0
       }
-    ],
-    "invalid": [
-
     ]
   }
 }
