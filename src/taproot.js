@@ -3,7 +3,7 @@
 // https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki
 // https://github.com/bitcoin/bips/blob/master/bip-0341.mediawiki
 Object.defineProperty(exports, '__esModule', { value: true });
-exports.isScriptPathSpend = exports.isValidTapscript = exports.removeAnnex = exports.getControlBlock = exports.getHuffmanTaptree = exports.tapTweakPubkey = exports.hashTapBranch = exports.hashTapLeaf = exports.serializeScriptSize = exports.aggregateMuSigPubkeys = exports.EVEN_Y_COORD_PREFIX = void 0;
+exports.isScriptPathSpend = exports.isValidTapscript = exports.removeAnnex = exports.getControlBlock = exports.getHuffmanTaptree = exports.tapTweakPubkey = exports.hashTapBranch = exports.hashTapLeaf = exports.serializeScriptSize = exports.aggregateMuSigPubkeys = exports.taggedHash = exports.EVEN_Y_COORD_PREFIX = void 0;
 const assert = require('assert');
 const FastPriorityQueue = require('fastpriorityqueue');
 const bcrypto = require('./crypto');
@@ -22,6 +22,7 @@ const TAGS = [
   'TapTweak',
   'KeyAgg list',
   'KeyAgg coefficient',
+  'TapSighash',
 ];
 /** An object mapping tags to their tagged hash prefix of [SHA256(tag) | SHA256(tag)] */
 const TAGGED_HASH_PREFIXES = Object.fromEntries(
@@ -33,6 +34,7 @@ const TAGGED_HASH_PREFIXES = Object.fromEntries(
 function taggedHash(prefix, data) {
   return bcrypto.sha256(Buffer.concat([TAGGED_HASH_PREFIXES[prefix], data]));
 }
+exports.taggedHash = taggedHash;
 /**
  * Aggregates a list of public keys into a single MuSig2* public key
  * according to the MuSig2 paper.

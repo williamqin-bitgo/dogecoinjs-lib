@@ -4,6 +4,9 @@
  * on all 32 byte x-only pub keys as defined in BIP340.
  */
 export declare const EVEN_Y_COORD_PREFIX: Uint8Array;
+declare const TAGS: readonly ["TapLeaf", "TapBranch", "TapTweak", "KeyAgg list", "KeyAgg coefficient", "TapSighash"];
+declare type TaggedHashPrefix = typeof TAGS[number];
+export declare function taggedHash(prefix: TaggedHashPrefix, data: Buffer): Buffer;
 /**
  * Aggregates a list of public keys into a single MuSig2* public key
  * according to the MuSig2 paper.
@@ -78,3 +81,4 @@ export declare function isValidTapscript(witnessStack: Buffer[], expectedTaproot
  * @returns `true` if `chunks` can be parsed according to the BIP 341 script validation rules, otherwise `false`
  */
 export declare function isScriptPathSpend(chunks: Buffer[]): boolean;
+export {};
