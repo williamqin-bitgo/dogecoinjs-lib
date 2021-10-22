@@ -360,9 +360,6 @@ export class Transaction {
       throw new Error('Must supply prevout script and value for all inputs');
     }
 
-    let tbuffer: Buffer = Buffer.from([]);
-    let bufferWriter: BufferWriter;
-
     const isAnyoneCanPay = !!(hashType & Transaction.SIGHASH_ANYONECANPAY);
     const isNone = !!(hashType & Transaction.SIGHASH_NONE);
     const isSingle = !!(hashType & Transaction.SIGHASH_SINGLE);
@@ -375,65 +372,51 @@ export class Transaction {
     let hashAnnex = EMPTY_BUFFER;
 
     if (!isAnyoneCanPay) {
-      tbuffer = Buffer.allocUnsafe(36 * this.ins.length);
-      bufferWriter = new BufferWriter(tbuffer, 0);
-
+      let bufferWriter = BufferWriter.withCapacity(36 * this.ins.length);
       this.ins.forEach(txIn => {
         bufferWriter.writeSlice(txIn.hash);
         bufferWriter.writeUInt32(txIn.index);
       });
+      hashPrevouts = bcrypto.sha256(bufferWriter.end());
 
-      hashPrevouts = bcrypto.sha256(tbuffer);
-
-      tbuffer = Buffer.allocUnsafe(8 * this.ins.length);
-      bufferWriter = new BufferWriter(tbuffer, 0);
-
+      bufferWriter = BufferWriter.withCapacity(8 * this.ins.length);
       values.forEach(value => bufferWriter.writeUInt64(value));
+      hashAmounts = bcrypto.sha256(bufferWriter.end());
 
-      hashAmounts = bcrypto.sha256(tbuffer);
-
-      tbuffer = Buffer.allocUnsafe(
+      bufferWriter = BufferWriter.withCapacity(
         prevOutScripts.map(s => s.length).reduce((a, b) => a + b),
       );
-      bufferWriter = new BufferWriter(tbuffer, 0);
-
       prevOutScripts.forEach(prevOutScript =>
         bufferWriter.writeSlice(prevOutScript),
       );
+      hashScriptPubKeys = bcrypto.sha256(bufferWriter.end());
 
-      hashScriptPubKeys = bcrypto.sha256(tbuffer);
-
-      tbuffer = Buffer.allocUnsafe(4 * this.ins.length);
-      bufferWriter = new BufferWriter(tbuffer, 0);
-
+      bufferWriter = BufferWriter.withCapacity(4 * this.ins.length);
       this.ins.forEach(txIn => bufferWriter.writeUInt32(txIn.sequence));
-
-      hashSequences = bcrypto.sha256(tbuffer);
+      hashSequences = bcrypto.sha256(bufferWriter.end());
     }
 
     if (!(isNone || isSingle)) {
       const txOutsSize = this.outs
         .map(output => 8 + varSliceSize(output.script))
         .reduce((a, b) => a + b);
-
-      tbuffer = Buffer.allocUnsafe(txOutsSize);
-      bufferWriter = new BufferWriter(tbuffer, 0);
+      const bufferWriter = BufferWriter.withCapacity(txOutsSize);
 
       this.outs.forEach(out => {
         bufferWriter.writeUInt64(out.value);
         bufferWriter.writeVarSlice(out.script);
       });
 
-      hashOutputs = bcrypto.sha256(tbuffer);
+      hashOutputs = bcrypto.sha256(bufferWriter.end());
     } else if (isSingle && inIndex < this.outs.length) {
       const output = this.outs[inIndex];
 
-      tbuffer = Buffer.allocUnsafe(8 + varSliceSize(output.script));
-      bufferWriter = new BufferWriter(tbuffer, 0);
+      const bufferWriter = BufferWriter.withCapacity(
+        8 + varSliceSize(output.script),
+      );
       bufferWriter.writeUInt64(output.value);
       bufferWriter.writeVarSlice(output.script);
-
-      hashOutputs = bcrypto.sha256(tbuffer);
+      hashOutputs = bcrypto.sha256(bufferWriter.end());
     }
 
     const input = this.ins[inIndex];
@@ -450,19 +433,16 @@ export class Transaction {
 
     if (hasAnnex) {
       const annex = input.witness[input.witness.length - 1];
-      tbuffer = Buffer.allocUnsafe(varSliceSize(annex));
-      bufferWriter = new BufferWriter(tbuffer, 0);
+      const bufferWriter = BufferWriter.withCapacity(varSliceSize(annex));
       bufferWriter.writeVarSlice(annex);
-
-      hashAnnex = bcrypto.sha256(tbuffer);
+      hashAnnex = bcrypto.sha256(bufferWriter.end());
     }
 
     // Length calculation from:
     // https://github.com/bitcoin/bips/blob/master/bip-0341.mediawiki#cite_note-14
     const sigMsgSize =
       174 - (isAnyoneCanPay ? 49 : 0) - (isNone ? 32 : 0) + (hasAnnex ? 32 : 0);
-    tbuffer = Buffer.allocUnsafe(sigMsgSize);
-    bufferWriter = new BufferWriter(tbuffer, 1);
+    const bufferWriter = BufferWriter.withCapacity(sigMsgSize);
 
     bufferWriter.writeUInt32(hashType);
     // Transaction
@@ -496,7 +476,7 @@ export class Transaction {
     // https://github.com/bitcoin/bips/blob/master/bip-0341.mediawiki#cite_note-19
     return taggedHash(
       'TapSighash',
-      Buffer.concat([new Uint8Array([0x00]), tbuffer]),
+      Buffer.concat([new Uint8Array([0x00]), bufferWriter.end()]),
     );
   }
 
