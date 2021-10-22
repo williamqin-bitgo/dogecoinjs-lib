@@ -55,3 +55,26 @@ export interface Taptree {
  */
 export declare function getHuffmanTaptree(scripts: Buffer[], weights: Array<number | undefined>): Taptree;
 export declare function getControlBlock(parity: 0 | 1, pubkey: Buffer, path: Buffer[]): Buffer;
+/**
+ * Identifies and removes the annex from a taproot witness stack if the annex is present.
+ * @param witnessStack
+ * @returns the witness stack without an annex
+ */
+export declare function removeAnnex(witnessStack: Buffer[]): Buffer[];
+/**
+ * Checks whether the tapscript and control block from a witness stack matches a 32 byte witness
+ * program (aka taproot pubkey) by validating the merkle proof for its inclusion in the taptree.
+ * @param witnessStack a stack of witness elements containing the tapscript and control block
+ * @param expectedTaprootPubkey the 32-byte array containing the witness program (the second
+ * push in the scriptPubKey) which represents a public key according to BIP340 and which we
+ * expect to match the taproot pubkey derived from the control block
+ * @returns `true` if the tapscript matches the witness program, otherwise `false`
+ * @throws if the witness stack does not conform to the BIP 341 script validation rules
+ */
+export declare function isValidTapscript(witnessStack: Buffer[], expectedTaprootPubkey: Buffer): boolean;
+/**
+ * Checks whether an array of buffers can be parsed according to the BIP 341 script validation rules
+ * @param chunks
+ * @returns `true` if `chunks` can be parsed according to the BIP 341 script validation rules, otherwise `false`
+ */
+export declare function isScriptPathSpend(chunks: Buffer[]): boolean;

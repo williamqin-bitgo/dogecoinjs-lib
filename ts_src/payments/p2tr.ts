@@ -56,11 +56,15 @@ export function p2tr(a: Payment, opts?: PaymentOpts): Payment {
         }),
       ),
       redeemIndex: typef.maybe(typef.Number), // Selects the redeem to spend
+
+      witness: typef.maybe(typef.arrayOf(typef.Buffer)),
     },
     a,
   );
 
   const _address = lazy.value(() => {
+    if (!a.address) return undefined;
+
     const result = bech32m.decode(a.address);
     const version = result.words.shift();
     const data = bech32m.fromWords(result.words);
@@ -108,6 +112,14 @@ export function p2tr(a: Payment, opts?: PaymentOpts): Payment {
     }
   });
   const _taprootPubkey = lazy.value(() => {
+    // this should be `a.output || _address()?.data` but prettier doesn't recognize ? operator
+    const output = a.output || (a.address ? _address()!.data : undefined);
+    if (output) {
+      // we remove the first two bytes (OP_1 0x20) from the output script to
+      // extract the 32 byte taproot pubkey (aka witness program)
+      return { pubkey: output.slice(2), parity: 0 as (0 | 1) };
+    }
+
     const internalPubkey = _internalPubkey();
     if (!internalPubkey) return;
     const taptree = _taptree();
@@ -122,17 +134,16 @@ export function p2tr(a: Payment, opts?: PaymentOpts): Payment {
   const o: Payment = { network };
 
   lazy.prop(o, 'address', () => {
-    if (!o.output) return;
+    if (!a.output && !o.output) return;
 
-    // we remove the first two bytes (OP_1 0x20) from the output script to
     // only encode the 32 byte witness program as bech32m
-    const words = bech32m.toWords(o.output.slice(2));
+    const words = bech32m.toWords(_taprootPubkey()!.pubkey);
     words.unshift(0x01);
     return bech32m.encode(network.bech32, words);
   });
   lazy.prop(o, 'output', () => {
     if (a.address) {
-      const { data } = _address();
+      const { data } = _address()!;
       return bscript.compile([OPS.OP_1, data]);
     }
 
@@ -186,6 +197,11 @@ export function p2tr(a: Payment, opts?: PaymentOpts): Payment {
     const nameParts = ['p2tr'];
     return nameParts.join('-');
   });
+  lazy.prop(o, 'redeem', () => {
+    if (!a.redeems || a.redeemIndex === undefined) return;
+
+    return a.redeems[a.redeemIndex];
+  });
 
   // extended validation
   if (opts.validate) {
@@ -193,6 +209,35 @@ export function p2tr(a: Payment, opts?: PaymentOpts): Payment {
     if (a.output) {
       if (a.output[0] !== OPS.OP_1 || a.output[1] !== 0x20)
         throw new TypeError('Output is invalid');
+
+      if (a.address) {
+        // if we're passed both an output script and an address, ensure they match
+        if (Buffer.compare(_address()!.data, _taprootPubkey()!.pubkey) !== 0) {
+          throw new TypeError('mismatch between address & output');
+        }
+      }
+    }
+
+    if (a.witness) {
+      const witnessStack = taproot.removeAnnex(a.witness);
+      if (witnessStack.length === 0) {
+        throw new TypeError('witness stack cannot be empty');
+      } else if (witnessStack.length === 1) {
+        // if there's only a single element it should be a key path spend schnorr signature
+        if (!bscript.isCanonicalSchnorrSignature(witnessStack[0])) {
+          throw new TypeError(
+            'a single witness stack element must be a schnorr signature',
+          );
+        }
+      } else if (a.output) {
+        // more than one element indicates a script path spend, ensure that our witness stack
+        // contains a script that is included in our taproot pub key
+        if (!taproot.isValidTapscript(witnessStack, _taprootPubkey()!.pubkey)) {
+          throw new TypeError(
+            'tapscript & control block does not match witness program ',
+          );
+        }
+      }
     }
     if (a.redeems) {
       a.redeems.forEach(redeem => {
