@@ -60,10 +60,13 @@ export interface Input {
 
 export class Transaction {
   static readonly DEFAULT_SEQUENCE = 0xffffffff;
+  static readonly SIGHASH_DEFAULT = 0x00;
   static readonly SIGHASH_ALL = 0x01;
   static readonly SIGHASH_NONE = 0x02;
   static readonly SIGHASH_SINGLE = 0x03;
   static readonly SIGHASH_ANYONECANPAY = 0x80;
+  static readonly SIGHASH_OUTPUT_MASK = 0x03;
+  static readonly SIGHASH_INPUT_MASK = 0x80;
   static readonly ADVANCED_TRANSACTION_MARKER = 0x00;
   static readonly ADVANCED_TRANSACTION_FLAG = 0x01;
 
@@ -343,6 +346,7 @@ export class Transaction {
     values: number[],
     hashType: number,
   ): Buffer {
+    // https://github.com/bitcoin/bips/blob/master/bip-0341.mediawiki#common-signature-message
     typeforce(
       types.tuple(
         types.UInt32,
@@ -360,9 +364,16 @@ export class Transaction {
       throw new Error('Must supply prevout script and value for all inputs');
     }
 
-    const isAnyoneCanPay = !!(hashType & Transaction.SIGHASH_ANYONECANPAY);
-    const isNone = !!(hashType & Transaction.SIGHASH_NONE);
-    const isSingle = !!(hashType & Transaction.SIGHASH_SINGLE);
+    const outputType =
+      hashType === Transaction.SIGHASH_DEFAULT
+        ? Transaction.SIGHASH_ALL
+        : hashType & Transaction.SIGHASH_OUTPUT_MASK;
+
+    const inputType = hashType & Transaction.SIGHASH_INPUT_MASK;
+
+    const isAnyoneCanPay = inputType === Transaction.SIGHASH_ANYONECANPAY;
+    const isNone = outputType === Transaction.SIGHASH_NONE;
+    const isSingle = outputType === Transaction.SIGHASH_SINGLE;
 
     let hashPrevouts = EMPTY_BUFFER;
     let hashAmounts = EMPTY_BUFFER;
@@ -421,7 +432,10 @@ export class Transaction {
 
     const input = this.ins[inIndex];
 
-    const hasAnnex = input.witness[input.witness.length - 1][0] === 0x50;
+    const hasAnnex =
+      input.witness &&
+      input.witness.length &&
+      input.witness[input.witness.length - 1][0] === 0x50;
     let spendType;
     if (hasAnnex) {
       const extFlag = input.witness.length > 3 ? 1 : 0;
@@ -444,7 +458,7 @@ export class Transaction {
       174 - (isAnyoneCanPay ? 49 : 0) - (isNone ? 32 : 0) + (hasAnnex ? 32 : 0);
     const bufferWriter = BufferWriter.withCapacity(sigMsgSize);
 
-    bufferWriter.writeUInt32(hashType);
+    bufferWriter.writeUInt8(hashType);
     // Transaction
     bufferWriter.writeInt32(this.version);
     bufferWriter.writeUInt32(this.locktime);
@@ -466,7 +480,9 @@ export class Transaction {
     } else {
       bufferWriter.writeUInt32(inIndex);
     }
-    bufferWriter.writeSlice(hashAnnex);
+    if (hasAnnex) {
+      bufferWriter.writeSlice(hashAnnex);
+    }
     // Output
     if (isSingle) {
       bufferWriter.writeSlice(hashOutputs);

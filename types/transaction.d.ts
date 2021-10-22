@@ -12,10 +12,13 @@ export interface Input {
 }
 export declare class Transaction {
     static readonly DEFAULT_SEQUENCE = 4294967295;
+    static readonly SIGHASH_DEFAULT = 0;
     static readonly SIGHASH_ALL = 1;
     static readonly SIGHASH_NONE = 2;
     static readonly SIGHASH_SINGLE = 3;
     static readonly SIGHASH_ANYONECANPAY = 128;
+    static readonly SIGHASH_OUTPUT_MASK = 3;
+    static readonly SIGHASH_INPUT_MASK = 128;
     static readonly ADVANCED_TRANSACTION_MARKER = 0;
     static readonly ADVANCED_TRANSACTION_FLAG = 1;
     static fromBuffer(buffer: Buffer, _NO_STRICT?: boolean): Transaction;
