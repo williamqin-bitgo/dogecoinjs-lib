@@ -10,6 +10,8 @@ interface TxbSignArg {
     hashType?: number;
     witnessValue?: number;
     witnessScript?: Buffer;
+    controlBlock?: Buffer;
+    annex?: Buffer;
 }
 export declare class TransactionBuilder {
     network: Network;
@@ -23,11 +25,11 @@ export declare class TransactionBuilder {
     setLowR(setting?: boolean): boolean;
     setLockTime(locktime: number): void;
     setVersion(version: number): void;
-    addInput(txHash: Buffer | string | Transaction, vout: number, sequence?: number, prevOutScript?: Buffer): number;
+    addInput(txHash: Buffer | string | Transaction, vout: number, sequence?: number, prevOutScript?: Buffer, value?: number): number;
     addOutput(scriptPubKey: string | Buffer, value: number): number;
     build(): Transaction;
     buildIncomplete(): Transaction;
-    sign(signParams: number | TxbSignArg, keyPair?: Signer, redeemScript?: Buffer, hashType?: number, witnessValue?: number, witnessScript?: Buffer): void;
+    sign(signParams: number | TxbSignArg, keyPair?: Signer, redeemScript?: Buffer, hashType?: number, witnessValue?: number, witnessScript?: Buffer, controlBlock?: Buffer, annex?: Buffer): void;
     private __addInputUnsafe;
     private __build;
     private __canModifyInputs;

@@ -3,10 +3,11 @@
 // https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki
 // https://github.com/bitcoin/bips/blob/master/bip-0341.mediawiki
 Object.defineProperty(exports, '__esModule', { value: true });
-exports.isScriptPathSpend = exports.isValidTapscript = exports.removeAnnex = exports.getControlBlock = exports.getHuffmanTaptree = exports.tapTweakPubkey = exports.hashTapBranch = exports.hashTapLeaf = exports.serializeScriptSize = exports.aggregateMuSigPubkeys = exports.taggedHash = exports.EVEN_Y_COORD_PREFIX = void 0;
+exports.isValidTapscript = exports.getTaptreeRoot = exports.getTapleafHash = exports.parseControlBlock = exports.parseTaprootWitness = exports.getControlBlock = exports.getHuffmanTaptree = exports.tapTweakPubkey = exports.tapTweakPrivkey = exports.hashTapBranch = exports.hashTapLeaf = exports.serializeScriptSize = exports.aggregateMuSigPubkeys = exports.taggedHash = exports.EVEN_Y_COORD_PREFIX = void 0;
 const assert = require('assert');
 const FastPriorityQueue = require('fastpriorityqueue');
 const bcrypto = require('./crypto');
+const schnorrBip340 = require('./schnorrBip340');
 const bscript = require('./script');
 const varuint = require('varuint-bitcoin');
 const ecc = require('tiny-secp256k1');
@@ -31,6 +32,12 @@ const TAGGED_HASH_PREFIXES = Object.fromEntries(
     return [tag, Buffer.concat([tagHash, tagHash])];
   }),
 );
+/**
+ * Calculates a BIP340-style tagged hash of the data with the given prefix.
+ * @param prefix the prefix to tag with
+ * @param data the data to hash
+ * @return {Buffer} the resulting tagged hash
+ */
 function taggedHash(prefix, data) {
   return bcrypto.sha256(Buffer.concat([TAGGED_HASH_PREFIXES[prefix], data]));
 }
@@ -112,22 +119,35 @@ function hashTapBranch(child1, child2) {
   return taggedHash('TapBranch', Buffer.concat(sortedChildren));
 }
 exports.hashTapBranch = hashTapBranch;
-/**
- * Tweaks an internal pubkey using the tagged hash of a taptree root.
- * @param pubkey the internal pubkey to tweak
- * @param tapTreeRoot the taptree root tagged hash
- * @returns the tweaked pubkey
- */
-function tapTweakPubkey(pubkey, tapTreeRoot) {
-  let tapTweak;
-  if (tapTreeRoot) {
-    tapTweak = taggedHash('TapTweak', Buffer.concat([pubkey, tapTreeRoot]));
-  } else {
-    // If the spending conditions do not require a script path, the output key should commit to an
-    // unspendable script path instead of having no script path.
-    // https://github.com/bitcoin/bips/blob/master/bip-0341.mediawiki#cite_note-22
-    tapTweak = taggedHash('TapTweak', pubkey);
+function calculateTapTweak(pubkey, taptreeRoot) {
+  if (taptreeRoot) {
+    return taggedHash('TapTweak', Buffer.concat([pubkey, taptreeRoot]));
   }
+  // If the spending conditions do not require a script path, the output key should commit to an
+  // unspendable script path instead of having no script path.
+  // https://github.com/bitcoin/bips/blob/master/bip-0341.mediawiki#cite_note-22
+  return taggedHash('TapTweak', pubkey);
+}
+/**
+ * Tweaks a privkey, using the tagged hash of its pubkey, and (optionally) a taptree root
+ * @param pubkey public key, used to calculate the tweak
+ * @param privkey the privkey to tweak
+ * @param taptreeRoot the taptree root tagged hash
+ * @returns {Buffer} the tweaked privkey
+ */
+function tapTweakPrivkey(pubkey, privkey, taptreeRoot) {
+  const tapTweak = calculateTapTweak(pubkey, taptreeRoot);
+  return ecc.privateAdd(schnorrBip340.forceEvenYPrivKey(privkey), tapTweak);
+}
+exports.tapTweakPrivkey = tapTweakPrivkey;
+/**
+ * Tweaks an internal pubkey, using the tagged hash of itself, and (optionally) a taptree root
+ * @param pubkey the internal pubkey to tweak
+ * @param taptreeRoot the taptree root tagged hash
+ * @returns {TweakedPubkey} the tweaked pubkey
+ */
+function tapTweakPubkey(pubkey, taptreeRoot) {
+  const tapTweak = calculateTapTweak(pubkey, taptreeRoot);
   const tweakedPubkey = ecc.pointAddScalar(
     Buffer.concat([exports.EVEN_Y_COORD_PREFIX, pubkey]),
     tapTweak,
@@ -143,7 +163,7 @@ exports.tapTweakPubkey = tapTweakPubkey;
  * list of scripts and corresponding weights.
  * @param scripts
  * @param weights
- * @returns the tagged hash of the taptree root
+ * @returns {Taptree} the tree, represented by its root hash, and the paths to that root from each of the input scripts
  */
 function getHuffmanTaptree(scripts, weights) {
   assert(
@@ -217,32 +237,34 @@ function getControlBlock(parity, pubkey, path) {
 }
 exports.getControlBlock = getControlBlock;
 /**
- * Identifies and removes the annex from a taproot witness stack if the annex is present.
+ * Parses a taproot witness stack and extracts key data elements.
  * @param witnessStack
- * @returns the witness stack without an annex
+ * @returns {ScriptPathWitness|KeyPathWitness} an object representing the
+ * parsed witness for a script path or key path spend.
+ * @throws {Error} if the witness stack does not conform to the BIP 341 script validation rules
  */
-function removeAnnex(witnessStack) {
+function parseTaprootWitness(witnessStack) {
+  let annex;
   if (
     witnessStack.length >= 2 &&
     witnessStack[witnessStack.length - 1][0] === 0x50
   ) {
     // If there are at least two witness elements, and the first byte of the last element is
     // 0x50, this last element is called annex a and is removed from the witness stack
-    return witnessStack.slice(0, witnessStack.length - 1);
+    annex = witnessStack[witnessStack.length - 1];
+    witnessStack = witnessStack.slice(0, -1);
   }
-  return witnessStack;
-}
-exports.removeAnnex = removeAnnex;
-/**
- * Parses a taproot witness stack and extracts key data elements.
- * @param witnessStack
- * @returns an object containing the tapscript, control block, taptree depth, internal pubkey, and leaf version
- * @throws if the witness stack does not conform to the BIP 341 script validation rules
- */
-function parseTaprootWitness(witnessStack) {
-  if (witnessStack.length < 2) {
-    throw new Error('witness stack must have at least two elements');
+  if (witnessStack.length < 1) {
+    throw new Error('witness stack must have at least one element');
+  } else if (witnessStack.length === 1) {
+    // key path spend
+    const signature = witnessStack[0];
+    if (!bscript.isCanonicalSchnorrSignature(signature)) {
+      throw new Error('invalid signature');
+    }
+    return { spendType: 'Key', signature, annex };
   }
+  // script path spend
   // second to last element is the tapscript
   const tapscript = witnessStack[witnessStack.length - 2];
   const tapscriptChunks = bscript.decompile(tapscript);
@@ -259,7 +281,24 @@ function parseTaprootWitness(witnessStack) {
   ) {
     throw new Error('invalid control block length');
   }
-  const taptreeDepth = Math.floor(controlBlock.length / 32) - 1;
+  return {
+    spendType: 'Script',
+    scriptSig: witnessStack.slice(0, -2),
+    tapscript,
+    controlBlock,
+    annex,
+  };
+}
+exports.parseTaprootWitness = parseTaprootWitness;
+/**
+ * Parses a taproot control block.
+ * @param controlBlock the control block to parse
+ * @returns {ControlBlock} the parsed control block
+ * @throws {Error} if the witness stack does not conform to the BIP 341 script validation rules
+ */
+function parseControlBlock(controlBlock) {
+  if ((controlBlock.length - 1) % 32 !== 0)
+    throw new TypeError('Invalid control block length');
   const parity = controlBlock[0] & 0x01;
   // Let p = c[1:33] and let P = lift_x(int(p)) where lift_x and [:] are defined as in BIP340.
   // Fail if this point is not on the curve
@@ -274,35 +313,30 @@ function parseTaprootWitness(witnessStack) {
   if (leafVersion === 0x50) {
     throw new Error('invalid leaf version');
   }
+  const path = [];
+  for (let j = 33; j < controlBlock.length; j += 32) {
+    path.push(controlBlock.slice(j, j + 32));
+  }
   return {
-    tapscript,
-    controlBlock,
-    taptreeDepth,
     parity,
     internalPubkey,
     leafVersion,
+    path,
   };
 }
+exports.parseControlBlock = parseControlBlock;
 /**
- * Checks whether the tapscript and control block from a witness stack matches a 32 byte witness
- * program (aka taproot pubkey) by validating the merkle proof for its inclusion in the taptree.
- * @param witnessStack a stack of witness elements containing the tapscript and control block
- * @param expectedTaprootPubkey the 32-byte array containing the witness program (the second
- * push in the scriptPubKey) which represents a public key according to BIP340 and which we
- * expect to match the taproot pubkey derived from the control block
- * @returns `true` if the tapscript matches the witness program, otherwise `false`
- * @throws if the witness stack does not conform to the BIP 341 script validation rules
+ * Calculates the tapleaf hash from a control block and script.
+ * @param controlBlock the control block, either raw or parsed
+ * @param tapscript the leaf script corresdponding to the control block
+ * @returns {Buffer} the tapleaf hash
  */
-function isValidTapscript(witnessStack, expectedTaprootPubkey) {
-  const {
-    tapscript,
-    controlBlock,
-    taptreeDepth,
-    parity,
-    internalPubkey,
-    leafVersion,
-  } = parseTaprootWitness(witnessStack);
-  const tapleafHash = taggedHash(
+function getTapleafHash(controlBlock, tapscript) {
+  if (Buffer.isBuffer(controlBlock)) {
+    controlBlock = parseControlBlock(controlBlock);
+  }
+  const { leafVersion } = controlBlock;
+  return taggedHash(
     'TapLeaf',
     Buffer.concat([
       new Uint8Array([leafVersion]),
@@ -310,11 +344,25 @@ function isValidTapscript(witnessStack, expectedTaprootPubkey) {
       tapscript,
     ]),
   );
+}
+exports.getTapleafHash = getTapleafHash;
+/**
+ * Calculates the taptree root hash from a control block and script.
+ * @param controlBlock the control block, either raw or parsed
+ * @param tapscript the leaf script corresdponding to the control block
+ * @param tapleafHash the leaf hash if already calculated
+ * @returns {Buffer} the taptree root hash
+ */
+function getTaptreeRoot(controlBlock, tapscript, tapleafHash) {
+  if (Buffer.isBuffer(controlBlock)) {
+    controlBlock = parseControlBlock(controlBlock);
+  }
+  const { path } = controlBlock;
+  tapleafHash = tapleafHash || getTapleafHash(controlBlock, tapscript);
   // `taptreeMerkleHash` begins as our tapscript tapleaf hash and its value iterates
   // through its parent tapbranch hashes until it ends up as the taptree root hash
   let taptreeMerkleHash = tapleafHash;
-  for (let j = 0; j < taptreeDepth; j += 1) {
-    const taptreeSiblingHash = controlBlock.slice(33 + 32 * j, 65 + 32 * j);
+  for (const taptreeSiblingHash of path) {
     taptreeMerkleHash =
       Buffer.compare(taptreeMerkleHash, taptreeSiblingHash) === -1
         ? taggedHash(
@@ -326,9 +374,26 @@ function isValidTapscript(witnessStack, expectedTaprootPubkey) {
             Buffer.concat([taptreeSiblingHash, taptreeMerkleHash]),
           );
   }
+  return taptreeMerkleHash;
+}
+exports.getTaptreeRoot = getTaptreeRoot;
+/**
+ * Checks whether the tapscript and control block from a witness stack matches a 32 byte witness
+ * program (aka taproot pubkey) by validating the merkle proof for its inclusion in the taptree.
+ * @param scriptPathWitness an object representing a stack of script path witness elements
+ * @param expectedTaprootPubkey the 32-byte array containing the witness program (the second
+ * push in the scriptPubKey) which represents a public key according to BIP340 and which we
+ * expect to match the taproot pubkey derived from the control block
+ * @returns `true` if the tapscript matches the witness program, otherwise `false`
+ * @throws if the witness stack does not conform to the BIP 341 script validation rules
+ */
+function isValidTapscript(scriptPathWitness, expectedTaprootPubkey) {
+  const controlBlock = parseControlBlock(scriptPathWitness.controlBlock);
+  const { parity, internalPubkey } = controlBlock;
+  const taptreeRoot = getTaptreeRoot(controlBlock, scriptPathWitness.tapscript);
   const tapTweak = taggedHash(
     'TapTweak',
-    Buffer.concat([internalPubkey, taptreeMerkleHash]),
+    Buffer.concat([internalPubkey, taptreeRoot]),
   );
   // If t ≥ order of secp256k1, pointAddScalar call below will throw.
   const taprootPubkey = ecc.pointAddScalar(
@@ -343,19 +408,3 @@ function isValidTapscript(witnessStack, expectedTaprootPubkey) {
   );
 }
 exports.isValidTapscript = isValidTapscript;
-/**
- * Checks whether an array of buffers can be parsed according to the BIP 341 script validation rules
- * @param chunks
- * @returns `true` if `chunks` can be parsed according to the BIP 341 script validation rules, otherwise `false`
- */
-function isScriptPathSpend(chunks) {
-  // check whether parsing the witness as a taproot witness fails
-  // this indicates whether `chunks` is the witness stack for a taproot script path spend
-  try {
-    parseTaprootWitness(chunks);
-    return true;
-  } catch (_a) {
-    return false;
-  }
-}
-exports.isScriptPathSpend = isScriptPathSpend;

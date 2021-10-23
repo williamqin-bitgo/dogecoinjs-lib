@@ -5,6 +5,7 @@
 import assert = require('assert');
 import FastPriorityQueue = require('fastpriorityqueue');
 import * as bcrypto from './crypto';
+import * as schnorrBip340 from './schnorrBip340';
 import * as bscript from './script';
 const varuint = require('varuint-bitcoin');
 
@@ -34,6 +35,12 @@ const TAGGED_HASH_PREFIXES = Object.fromEntries(
   }),
 ) as { [k in TaggedHashPrefix]: Buffer };
 
+/**
+ * Calculates a BIP340-style tagged hash of the data with the given prefix.
+ * @param prefix the prefix to tag with
+ * @param data the data to hash
+ * @return {Buffer} the resulting tagged hash
+ */
 export function taggedHash(prefix: TaggedHashPrefix, data: Buffer): Buffer {
   return bcrypto.sha256(Buffer.concat([TAGGED_HASH_PREFIXES[prefix], data]));
 }
@@ -124,30 +131,48 @@ export function hashTapBranch(child1: Buffer, child2: Buffer): Buffer {
   return taggedHash('TapBranch', Buffer.concat(sortedChildren));
 }
 
+function calculateTapTweak(pubkey: Buffer, taptreeRoot?: Buffer): Buffer {
+  if (taptreeRoot) {
+    return taggedHash('TapTweak', Buffer.concat([pubkey, taptreeRoot]));
+  }
+  // If the spending conditions do not require a script path, the output key should commit to an
+  // unspendable script path instead of having no script path.
+  // https://github.com/bitcoin/bips/blob/master/bip-0341.mediawiki#cite_note-22
+  return taggedHash('TapTweak', pubkey);
+}
+
+/**
+ * Tweaks a privkey, using the tagged hash of its pubkey, and (optionally) a taptree root
+ * @param pubkey public key, used to calculate the tweak
+ * @param privkey the privkey to tweak
+ * @param taptreeRoot the taptree root tagged hash
+ * @returns {Buffer} the tweaked privkey
+ */
+export function tapTweakPrivkey(
+  pubkey: Buffer,
+  privkey: Buffer,
+  taptreeRoot?: Buffer,
+): Buffer {
+  const tapTweak = calculateTapTweak(pubkey, taptreeRoot);
+  return ecc.privateAdd(schnorrBip340.forceEvenYPrivKey(privkey), tapTweak);
+}
+
 export interface TweakedPubkey {
   parity: 0 | 1;
   pubkey: Buffer;
 }
 
 /**
- * Tweaks an internal pubkey using the tagged hash of a taptree root.
+ * Tweaks an internal pubkey, using the tagged hash of itself, and (optionally) a taptree root
  * @param pubkey the internal pubkey to tweak
- * @param tapTreeRoot the taptree root tagged hash
- * @returns the tweaked pubkey
+ * @param taptreeRoot the taptree root tagged hash
+ * @returns {TweakedPubkey} the tweaked pubkey
  */
 export function tapTweakPubkey(
   pubkey: Buffer,
-  tapTreeRoot?: Buffer,
+  taptreeRoot?: Buffer,
 ): TweakedPubkey {
-  let tapTweak: Buffer;
-  if (tapTreeRoot) {
-    tapTweak = taggedHash('TapTweak', Buffer.concat([pubkey, tapTreeRoot]));
-  } else {
-    // If the spending conditions do not require a script path, the output key should commit to an
-    // unspendable script path instead of having no script path.
-    // https://github.com/bitcoin/bips/blob/master/bip-0341.mediawiki#cite_note-22
-    tapTweak = taggedHash('TapTweak', pubkey);
-  }
+  const tapTweak = calculateTapTweak(pubkey, taptreeRoot);
 
   const tweakedPubkey = ecc.pointAddScalar(
     Buffer.concat([EVEN_Y_COORD_PREFIX, pubkey]),
@@ -178,7 +203,7 @@ interface WeightedTapScript {
  * list of scripts and corresponding weights.
  * @param scripts
  * @param weights
- * @returns the tagged hash of the taptree root
+ * @returns {Taptree} the tree, represented by its root hash, and the paths to that root from each of the input scripts
  */
 export function getHuffmanTaptree(
   scripts: Buffer[],
@@ -268,44 +293,60 @@ export function getControlBlock(
   return Buffer.concat([new Uint8Array([parityVersion]), pubkey, ...path]);
 }
 
+export interface KeyPathWitness {
+  spendType: 'Key';
+  signature: Buffer;
+  annex?: Buffer;
+}
+
+export interface ScriptPathWitness {
+  spendType: 'Script';
+  scriptSig: Buffer[];
+  tapscript: Buffer;
+  controlBlock: Buffer;
+  annex?: Buffer;
+}
+
+export interface ControlBlock {
+  parity: number;
+  internalPubkey: Buffer;
+  leafVersion: number;
+  path: Buffer[];
+}
+
 /**
- * Identifies and removes the annex from a taproot witness stack if the annex is present.
+ * Parses a taproot witness stack and extracts key data elements.
  * @param witnessStack
- * @returns the witness stack without an annex
+ * @returns {ScriptPathWitness|KeyPathWitness} an object representing the
+ * parsed witness for a script path or key path spend.
+ * @throws {Error} if the witness stack does not conform to the BIP 341 script validation rules
  */
-export function removeAnnex(witnessStack: Buffer[]): Buffer[] {
+export function parseTaprootWitness(
+  witnessStack: Buffer[],
+): ScriptPathWitness | KeyPathWitness {
+  let annex;
   if (
     witnessStack.length >= 2 &&
     witnessStack[witnessStack.length - 1][0] === 0x50
   ) {
     // If there are at least two witness elements, and the first byte of the last element is
     // 0x50, this last element is called annex a and is removed from the witness stack
-    return witnessStack.slice(0, witnessStack.length - 1);
+    annex = witnessStack[witnessStack.length - 1];
+    witnessStack = witnessStack.slice(0, -1);
   }
 
-  return witnessStack;
-}
-
-/**
- * Parses a taproot witness stack and extracts key data elements.
- * @param witnessStack
- * @returns an object containing the tapscript, control block, taptree depth, internal pubkey, and leaf version
- * @throws if the witness stack does not conform to the BIP 341 script validation rules
- */
-function parseTaprootWitness(
-  witnessStack: Buffer[],
-): {
-  tapscript: Buffer;
-  controlBlock: Buffer;
-  taptreeDepth: number;
-  parity: number;
-  internalPubkey: Buffer;
-  leafVersion: number;
-} {
-  if (witnessStack.length < 2) {
-    throw new Error('witness stack must have at least two elements');
+  if (witnessStack.length < 1) {
+    throw new Error('witness stack must have at least one element');
+  } else if (witnessStack.length === 1) {
+    // key path spend
+    const signature = witnessStack[0];
+    if (!bscript.isCanonicalSchnorrSignature(signature)) {
+      throw new Error('invalid signature');
+    }
+    return { spendType: 'Key', signature, annex };
   }
 
+  // script path spend
   // second to last element is the tapscript
   const tapscript = witnessStack[witnessStack.length - 2];
   const tapscriptChunks = bscript.decompile(tapscript);
@@ -325,7 +366,24 @@ function parseTaprootWitness(
     throw new Error('invalid control block length');
   }
 
-  const taptreeDepth = Math.floor(controlBlock.length / 32) - 1;
+  return {
+    spendType: 'Script',
+    scriptSig: witnessStack.slice(0, -2),
+    tapscript,
+    controlBlock,
+    annex,
+  };
+}
+
+/**
+ * Parses a taproot control block.
+ * @param controlBlock the control block to parse
+ * @returns {ControlBlock} the parsed control block
+ * @throws {Error} if the witness stack does not conform to the BIP 341 script validation rules
+ */
+export function parseControlBlock(controlBlock: Buffer): ControlBlock {
+  if ((controlBlock.length - 1) % 32 !== 0)
+    throw new TypeError('Invalid control block length');
 
   const parity = controlBlock[0] & 0x01;
 
@@ -342,40 +400,35 @@ function parseTaprootWitness(
     throw new Error('invalid leaf version');
   }
 
+  const path: Buffer[] = [];
+  for (let j = 33; j < controlBlock.length; j += 32) {
+    path.push(controlBlock.slice(j, j + 32));
+  }
+
   return {
-    tapscript,
-    controlBlock,
-    taptreeDepth,
     parity,
     internalPubkey,
     leafVersion,
+    path,
   };
 }
 
 /**
- * Checks whether the tapscript and control block from a witness stack matches a 32 byte witness
- * program (aka taproot pubkey) by validating the merkle proof for its inclusion in the taptree.
- * @param witnessStack a stack of witness elements containing the tapscript and control block
- * @param expectedTaprootPubkey the 32-byte array containing the witness program (the second
- * push in the scriptPubKey) which represents a public key according to BIP340 and which we
- * expect to match the taproot pubkey derived from the control block
- * @returns `true` if the tapscript matches the witness program, otherwise `false`
- * @throws if the witness stack does not conform to the BIP 341 script validation rules
+ * Calculates the tapleaf hash from a control block and script.
+ * @param controlBlock the control block, either raw or parsed
+ * @param tapscript the leaf script corresdponding to the control block
+ * @returns {Buffer} the tapleaf hash
  */
-export function isValidTapscript(
-  witnessStack: Buffer[],
-  expectedTaprootPubkey: Buffer,
-): boolean {
-  const {
-    tapscript,
-    controlBlock,
-    taptreeDepth,
-    parity,
-    internalPubkey,
-    leafVersion,
-  } = parseTaprootWitness(witnessStack);
+export function getTapleafHash(
+  controlBlock: Buffer | ControlBlock,
+  tapscript: Buffer,
+): Buffer {
+  if (Buffer.isBuffer(controlBlock)) {
+    controlBlock = parseControlBlock(controlBlock);
+  }
+  const { leafVersion } = controlBlock;
 
-  const tapleafHash = taggedHash(
+  return taggedHash(
     'TapLeaf',
     Buffer.concat([
       new Uint8Array([leafVersion]),
@@ -383,12 +436,31 @@ export function isValidTapscript(
       tapscript,
     ]),
   );
+}
+
+/**
+ * Calculates the taptree root hash from a control block and script.
+ * @param controlBlock the control block, either raw or parsed
+ * @param tapscript the leaf script corresdponding to the control block
+ * @param tapleafHash the leaf hash if already calculated
+ * @returns {Buffer} the taptree root hash
+ */
+export function getTaptreeRoot(
+  controlBlock: Buffer | ControlBlock,
+  tapscript: Buffer,
+  tapleafHash?: Buffer,
+): Buffer {
+  if (Buffer.isBuffer(controlBlock)) {
+    controlBlock = parseControlBlock(controlBlock);
+  }
+  const { path } = controlBlock;
+
+  tapleafHash = tapleafHash || getTapleafHash(controlBlock, tapscript);
 
   // `taptreeMerkleHash` begins as our tapscript tapleaf hash and its value iterates
   // through its parent tapbranch hashes until it ends up as the taptree root hash
   let taptreeMerkleHash = tapleafHash;
-  for (let j = 0; j < taptreeDepth; j += 1) {
-    const taptreeSiblingHash = controlBlock.slice(33 + 32 * j, 65 + 32 * j);
+  for (const taptreeSiblingHash of path) {
     taptreeMerkleHash =
       Buffer.compare(taptreeMerkleHash, taptreeSiblingHash) === -1
         ? taggedHash(
@@ -401,9 +473,31 @@ export function isValidTapscript(
           );
   }
 
+  return taptreeMerkleHash;
+}
+
+/**
+ * Checks whether the tapscript and control block from a witness stack matches a 32 byte witness
+ * program (aka taproot pubkey) by validating the merkle proof for its inclusion in the taptree.
+ * @param scriptPathWitness an object representing a stack of script path witness elements
+ * @param expectedTaprootPubkey the 32-byte array containing the witness program (the second
+ * push in the scriptPubKey) which represents a public key according to BIP340 and which we
+ * expect to match the taproot pubkey derived from the control block
+ * @returns `true` if the tapscript matches the witness program, otherwise `false`
+ * @throws if the witness stack does not conform to the BIP 341 script validation rules
+ */
+export function isValidTapscript(
+  scriptPathWitness: ScriptPathWitness,
+  expectedTaprootPubkey: Buffer,
+): boolean {
+  const controlBlock = parseControlBlock(scriptPathWitness.controlBlock);
+  const { parity, internalPubkey } = controlBlock;
+
+  const taptreeRoot = getTaptreeRoot(controlBlock, scriptPathWitness.tapscript);
+
   const tapTweak = taggedHash(
     'TapTweak',
-    Buffer.concat([internalPubkey, taptreeMerkleHash]),
+    Buffer.concat([internalPubkey, taptreeRoot]),
   );
 
   // If t ≥ order of secp256k1, pointAddScalar call below will throw.
@@ -419,20 +513,4 @@ export function isValidTapscript(
     Buffer.compare(expectedTaprootPubkey, taprootPubkey.slice(1)) === 0 &&
     parity === taprootPubkeyParity
   );
-}
-
-/**
- * Checks whether an array of buffers can be parsed according to the BIP 341 script validation rules
- * @param chunks
- * @returns `true` if `chunks` can be parsed according to the BIP 341 script validation rules, otherwise `false`
- */
-export function isScriptPathSpend(chunks: Buffer[]): boolean {
-  // check whether parsing the witness as a taproot witness fails
-  // this indicates whether `chunks` is the witness stack for a taproot script path spend
-  try {
-    parseTaprootWitness(chunks);
-    return true;
-  } catch {
-    return false;
-  }
 }

@@ -4,12 +4,12 @@
 Object.defineProperty(exports, '__esModule', { value: true });
 exports.p2tr = void 0;
 const networks_1 = require('../networks');
+const schnorrBip340_1 = require('../schnorrBip340');
 const bscript = require('../script');
 const taproot = require('../taproot');
 const lazy = require('./lazy');
 const typef = require('typeforce');
 const OPS = bscript.OPS;
-const ecc = require('tiny-secp256k1');
 const { bech32m } = require('bech32');
 /**
  * A secp256k1 x coordinate with unknown discrete logarithm used for eliminating
@@ -22,13 +22,16 @@ const H = Buffer.from(
 const EMPTY_BUFFER = Buffer.alloc(0);
 // output: OP_1 {witnessProgram}
 function p2tr(a, opts) {
-  if (!a.address && !a.pubkey && !a.pubkeys && !a.redeems && !a.output)
+  if (
+    !a.address &&
+    !a.pubkey &&
+    !a.pubkeys &&
+    !a.redeems &&
+    !a.output &&
+    !a.witness
+  )
     throw new TypeError('Not enough data');
   opts = Object.assign({ validate: true }, opts || {});
-  const isXOnlyPoint = pubkey => {
-    if (!Buffer.isBuffer(pubkey)) return false;
-    return ecc.isPoint(Buffer.concat([taproot.EVEN_Y_COORD_PREFIX, pubkey]));
-  };
   typef(
     {
       network: typef.maybe(typef.Object),
@@ -38,9 +41,10 @@ function p2tr(a, opts) {
       // the next 32 bytes, followed by the 32 byte witness program
       output: typef.maybe(typef.BufferN(34)),
       // a single pubkey
-      pubkey: typef.maybe(isXOnlyPoint),
-      // the pub keys used for aggregate musig signing
-      pubkeys: typef.maybe(typef.arrayOf(isXOnlyPoint)),
+      pubkey: typef.maybe(schnorrBip340_1.isXOnlyPoint),
+      // the pub key(s) used for keypath signing.
+      // aggregated with MuSig2* if > 1
+      pubkeys: typef.maybe(typef.arrayOf(schnorrBip340_1.isXOnlyPoint)),
       redeems: typef.maybe(
         typef.arrayOf({
           network: typef.maybe(typef.Object),
@@ -50,7 +54,8 @@ function p2tr(a, opts) {
         }),
       ),
       redeemIndex: typef.maybe(typef.Number),
-      witness: typef.maybe(typef.arrayOf(typef.Buffer)),
+      controlBlock: typef.maybe(typef.Buffer),
+      annex: typef.maybe(typef.Buffer),
     },
     a,
   );
@@ -65,10 +70,6 @@ function p2tr(a, opts) {
       data: Buffer.from(data),
     };
   });
-  const _rchunks = lazy.value(() => {
-    const chosen = a.redeems[a.redeemIndex]; // These not-nulls are enforced at the call site.
-    return bscript.decompile(chosen.input);
-  });
   const _taptree = lazy.value(() => {
     if (!a.redeems) return;
     const outputs = a.redeems.map(({ output }) => output);
@@ -78,13 +79,21 @@ function p2tr(a, opts) {
       a.redeems.map(({ weight }) => weight),
     );
   });
+  const _parsedControlBlock = lazy.value(() => {
+    if (!a.controlBlock) return;
+    return taproot.parseControlBlock(a.controlBlock);
+  });
   const _internalPubkey = lazy.value(() => {
     if (a.pubkey) {
       // single pubkey
       return a.pubkey;
-    } else if (a.pubkeys && a.pubkeys.length) {
+    } else if (a.pubkeys && a.pubkeys.length === 1) {
+      return a.pubkeys[0];
+    } else if (a.pubkeys && a.pubkeys.length > 1) {
       // multiple pubkeys
       return taproot.aggregateMuSigPubkeys(a.pubkeys);
+    } else if (_parsedControlBlock()) {
+      return _parsedControlBlock().internalPubkey;
     } else {
       // no key path
       if (!a.redeems) return; // must have either redeems or pubkey(s)
@@ -107,11 +116,24 @@ function p2tr(a, opts) {
     }
     const internalPubkey = _internalPubkey();
     if (!internalPubkey) return;
-    const taptree = _taptree();
-    return taproot.tapTweakPubkey(
-      internalPubkey,
-      taptree ? taptree.root : undefined,
-    );
+    let taptreeRoot;
+    if (
+      a.controlBlock &&
+      a.redeems &&
+      a.redeems.length &&
+      a.redeemIndex !== undefined &&
+      a.redeems[a.redeemIndex].output
+    ) {
+      // Calculate taptree root from script + path
+      taptreeRoot = taproot.getTaptreeRoot(
+        _parsedControlBlock(),
+        a.redeems[a.redeemIndex].output,
+      );
+    } else {
+      const taptree = _taptree();
+      if (taptree) taptreeRoot = taptree.root;
+    }
+    return taproot.tapTweakPubkey(internalPubkey, taptreeRoot);
   });
   const network = a.network || networks_1.bitcoin;
   const o = { network };
@@ -121,6 +143,23 @@ function p2tr(a, opts) {
     const words = bech32m.toWords(_taprootPubkey().pubkey);
     words.unshift(0x01);
     return bech32m.encode(network.bech32, words);
+  });
+  lazy.prop(o, 'controlBlock', () => {
+    const taprootPubkey = _taprootPubkey();
+    const internalPubkey = _internalPubkey();
+    const taptree = _taptree();
+    if (
+      !taprootPubkey ||
+      !internalPubkey ||
+      !taptree ||
+      a.redeemIndex === undefined
+    )
+      return;
+    return taproot.getControlBlock(
+      taprootPubkey.parity,
+      internalPubkey,
+      taptree.paths[a.redeemIndex],
+    );
   });
   lazy.prop(o, 'output', () => {
     if (a.address) {
@@ -133,47 +172,53 @@ function p2tr(a, opts) {
     return bscript.compile([OPS.OP_1, taprootPubkey.pubkey]);
   });
   lazy.prop(o, 'witness', () => {
-    if (!a.redeems || a.redeemIndex === undefined) return; // No chosen redeem script, can't make witness
-    const chosen = a.redeems[a.redeemIndex];
-    if (!chosen) return;
-    // transform redeem input to witness stack?
-    if (
-      chosen.input &&
-      chosen.input.length > 0 &&
-      chosen.output &&
-      chosen.output.length > 0
-    ) {
-      const stack = bscript.toStack(_rchunks());
-      // assign, and blank the existing input
-      o.redeems[a.redeemIndex] = Object.assign({ witness: stack }, chosen);
-      o.redeems[a.redeemIndex].input = EMPTY_BUFFER;
-      return stack.concat(
-        chosen.output,
-        taproot.getControlBlock(
-          _taprootPubkey().parity,
-          _internalPubkey(),
-          _taptree().paths[a.redeemIndex],
-        ),
-      );
+    if (!a.redeems) {
+      if (a.signature) return [a.signature]; // Keypath spend
+      return;
+    } else if (a.redeemIndex === undefined) {
+      return; // No chosen redeem script, can't make witness
     }
-    if (!chosen.output) return;
-    if (!chosen.witness) return;
-    return chosen.witness.concat([
-      chosen.output,
-      taproot.getControlBlock(
-        _taprootPubkey().parity,
-        _internalPubkey(),
-        _taptree().paths[a.redeemIndex],
-      ),
-    ]);
+    const chosenRedeem = a.redeems[a.redeemIndex];
+    if (!chosenRedeem) return;
+    let witness;
+    // some callers may provide witness elements in the input script
+    if (
+      chosenRedeem.input &&
+      chosenRedeem.input.length > 0 &&
+      chosenRedeem.output &&
+      chosenRedeem.output.length > 0
+    ) {
+      // transform redeem input to witness stack
+      witness = bscript.toStack(bscript.decompile(chosenRedeem.input));
+      // assign, and blank the existing input
+      o.redeems[a.redeemIndex] = Object.assign({ witness }, chosenRedeem);
+      o.redeems[a.redeemIndex].input = EMPTY_BUFFER;
+    } else if (
+      chosenRedeem.output &&
+      chosenRedeem.output.length > 0 &&
+      chosenRedeem.witness &&
+      chosenRedeem.witness.length > 0
+    ) {
+      witness = chosenRedeem.witness;
+    } else {
+      return;
+    }
+    // tapscript
+    witness.push(chosenRedeem.output);
+    if (!o.controlBlock) return;
+    witness.push(o.controlBlock);
+    if (a.annex) {
+      witness.push(a.annex);
+    }
+    return witness;
   });
   lazy.prop(o, 'name', () => {
     const nameParts = ['p2tr'];
     return nameParts.join('-');
   });
   lazy.prop(o, 'redeem', () => {
-    if (!a.redeems || a.redeemIndex === undefined) return;
-    return a.redeems[a.redeemIndex];
+    if (a.redeems && a.redeemIndex !== undefined)
+      return a.redeems[a.redeemIndex];
   });
   // extended validation
   if (opts.validate) {
@@ -188,21 +233,30 @@ function p2tr(a, opts) {
         }
       }
     }
+    if (a.controlBlock && a.pubkeys && a.pubkeys.length) {
+      if (!_parsedControlBlock().internalPubkey.equals(_internalPubkey())) {
+        throw new TypeError('Internal pubkey mismatch');
+      }
+    }
+    if (a.signature) {
+      if (!bscript.isCanonicalSchnorrSignature(a.signature)) {
+        throw new TypeError('signature is not a valid schnorr signature');
+      }
+    }
     if (a.witness) {
-      const witnessStack = taproot.removeAnnex(a.witness);
-      if (witnessStack.length === 0) {
-        throw new TypeError('witness stack cannot be empty');
-      } else if (witnessStack.length === 1) {
-        // if there's only a single element it should be a key path spend schnorr signature
-        if (!bscript.isCanonicalSchnorrSignature(witnessStack[0])) {
-          throw new TypeError(
-            'a single witness stack element must be a schnorr signature',
-          );
+      const parsedWitness = taproot.parseTaprootWitness(a.witness);
+      if (parsedWitness.spendType === 'Key') {
+        // parsedWitness is key path spend schnorr signature
+        if (
+          a.signature &&
+          Buffer.compare(a.signature, parsedWitness.signature) !== 0
+        ) {
+          throw new TypeError('mismatch between witness & signature');
         }
-      } else if (a.output) {
-        // more than one element indicates a script path spend, ensure that our witness stack
-        // contains a script that is included in our taproot pub key
-        if (!taproot.isValidTapscript(witnessStack, _taprootPubkey().pubkey)) {
+      } else {
+        // parsedWitness is script path spend witness stack
+        // ensure that our witness stack contains a script that is included in our taproot pub key
+        if (!taproot.isValidTapscript(parsedWitness, _taprootPubkey().pubkey)) {
           throw new TypeError(
             'tapscript & control block does not match witness program ',
           );

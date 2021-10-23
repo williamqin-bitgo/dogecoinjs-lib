@@ -16,6 +16,11 @@
  */
 /// <reference types="node" />
 /**
+ * @param d - private key
+ * @return {Buffer} d, if it has an even-Y pubkey, otherwise order_secp256k1-d
+ */
+export declare function forceEvenYPrivKey(d: Buffer): Buffer;
+/**
  * @param x - Buffer
  * @return {Boolean} - true iff x is a valid 32-byte x-only public key buffer
  */

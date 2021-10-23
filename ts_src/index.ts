@@ -5,8 +5,9 @@ import * as ECPair from './ecpair';
 import * as networks from './networks';
 import * as payments from './payments';
 import * as script from './script';
+import * as taproot from './taproot';
 
-export { ECPair, address, bip32, crypto, networks, payments, script };
+export { ECPair, address, bip32, crypto, networks, payments, script, taproot };
 
 export { Block } from './block';
 export { input, output, witness, types } from './classify';

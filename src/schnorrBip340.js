@@ -16,7 +16,7 @@
  * https://github.com/bitcoinjs/tiny-secp256k1/blob/v1.1.6/js.js
  */
 Object.defineProperty(exports, '__esModule', { value: true });
-exports.signSchnorrWithoutExtraData = exports.signSchnorr = exports.verifySchnorr = exports.isXOnlyPoint = void 0;
+exports.signSchnorrWithoutExtraData = exports.signSchnorr = exports.verifySchnorr = exports.isXOnlyPoint = exports.forceEvenYPrivKey = void 0;
 const BN = require('bn.js');
 const elliptic_1 = require('elliptic');
 const { createHash } = require('crypto');
@@ -90,6 +90,23 @@ function hasEvenY(P) {
       .isZero()
   );
 }
+function forceEvenYKeyPair(d) {
+  const dd = fromBuffer(d);
+  const P = G.mul(dd);
+  if (hasEvenY(P)) {
+    return { dd, P: encodeXOnlyPoint(P) };
+  } else {
+    return { dd: n.sub(dd), P: encodeXOnlyPoint(P) };
+  }
+}
+/**
+ * @param d - private key
+ * @return {Buffer} d, if it has an even-Y pubkey, otherwise order_secp256k1-d
+ */
+function forceEvenYPrivKey(d) {
+  return toBuffer(forceEvenYKeyPair(d).dd);
+}
+exports.forceEvenYPrivKey = forceEvenYPrivKey;
 /**
  * @param x - Buffer
  * @return {Boolean} - true iff x is a valid 32-byte x-only public key buffer
@@ -148,17 +165,12 @@ function __signSchnorr(hash, d, extraData) {
       throw new TypeError(THROW_BAD_EXTRA_DATA);
     }
   }
-  let dd = fromBuffer(d);
-  const P = G.mul(dd);
-  dd = hasEvenY(P) ? dd : n.sub(dd);
+  const { dd, P } = forceEvenYKeyPair(d);
   const t = extraData
     ? dd.xor(fromBuffer(taggedHash('BIP0340/aux', extraData)))
     : dd;
   const k0 = fromBuffer(
-    taggedHash(
-      'BIP0340/nonce',
-      Buffer.concat([toBuffer(t), encodeXOnlyPoint(P), hash]),
-    ),
+    taggedHash('BIP0340/nonce', Buffer.concat([toBuffer(t), P, hash])),
   );
   if (k0.isZero()) {
     throw new Error(
@@ -173,14 +185,14 @@ function __signSchnorr(hash, d, extraData) {
   const e = fromBuffer(
     taggedHash(
       'BIP0340/challenge',
-      Buffer.concat([encodeXOnlyPoint(R), encodeXOnlyPoint(P), hash]),
+      Buffer.concat([encodeXOnlyPoint(R), P, hash]),
     ),
   ).mod(n);
   const sig = Buffer.concat([
     encodeXOnlyPoint(R),
     toBuffer(k.add(e.mul(dd)).mod(n)),
   ]);
-  if (!verifySchnorr(hash, encodeXOnlyPoint(P), sig)) {
+  if (!verifySchnorr(hash, P, sig)) {
     throw new Error('The created signature does not pass verification.');
   }
   return sig;

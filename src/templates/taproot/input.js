@@ -4,18 +4,15 @@
 // https://github.com/bitcoin/bips/blob/master/bip-0341.mediawiki
 Object.defineProperty(exports, '__esModule', { value: true });
 exports.check = void 0;
-const bscript = require('../../script');
 const taproot = require('../../taproot');
 function check(chunks) {
-  chunks = taproot.removeAnnex(chunks);
-  if (chunks.length === 0) {
+  try {
+    // check whether parsing the witness as a taproot witness fails
+    // this indicates whether `chunks` is a valid taproot input
+    taproot.parseTaprootWitness(chunks);
+    return true;
+  } catch (_a) {
     return false;
-  } else if (chunks.length === 1) {
-    // possible key path spend
-    return bscript.isCanonicalSchnorrSignature(chunks[0]);
-  } else {
-    // possible script path spend
-    return taproot.isScriptPathSpend(chunks);
   }
 }
 exports.check = check;
