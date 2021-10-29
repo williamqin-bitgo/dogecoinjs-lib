@@ -1,6 +1,6 @@
 'use strict';
 Object.defineProperty(exports, '__esModule', { value: true });
-exports.TransactionBuilder = exports.Transaction = exports.opcodes = exports.Psbt = exports.Block = exports.script = exports.payments = exports.networks = exports.crypto = exports.bip32 = exports.address = exports.ECPair = void 0;
+exports.TransactionBuilder = exports.Transaction = exports.opcodes = exports.Psbt = exports.types = exports.witness = exports.output = exports.input = exports.Block = exports.script = exports.payments = exports.networks = exports.crypto = exports.bip32 = exports.address = exports.ECPair = void 0;
 const bip32 = require('bip32');
 exports.bip32 = bip32;
 const address = require('./address');
@@ -20,6 +20,31 @@ Object.defineProperty(exports, 'Block', {
   enumerable: true,
   get: function() {
     return block_1.Block;
+  },
+});
+var classify_1 = require('./classify');
+Object.defineProperty(exports, 'input', {
+  enumerable: true,
+  get: function() {
+    return classify_1.input;
+  },
+});
+Object.defineProperty(exports, 'output', {
+  enumerable: true,
+  get: function() {
+    return classify_1.output;
+  },
+});
+Object.defineProperty(exports, 'witness', {
+  enumerable: true,
+  get: function() {
+    return classify_1.witness;
+  },
+});
+Object.defineProperty(exports, 'types', {
+  enumerable: true,
+  get: function() {
+    return classify_1.types;
   },
 });
 var psbt_1 = require('./psbt');
