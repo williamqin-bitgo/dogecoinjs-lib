@@ -57,6 +57,9 @@ class BufferWriter {
     this.offset = offset;
     typeforce(types.tuple(types.Buffer, types.UInt32), [buffer, offset]);
   }
+  static withCapacity(size) {
+    return new BufferWriter(Buffer.alloc(size));
+  }
   writeUInt8(i) {
     this.offset = this.buffer.writeUInt8(i, this.offset);
   }
@@ -86,6 +89,12 @@ class BufferWriter {
   writeVector(vector) {
     this.writeVarInt(vector.length);
     vector.forEach(buf => this.writeVarSlice(buf));
+  }
+  end() {
+    if (this.buffer.length === this.offset) {
+      return this.buffer;
+    }
+    throw new Error(`buffer size ${this.buffer.length}, offset ${this.offset}`);
   }
 }
 exports.BufferWriter = BufferWriter;

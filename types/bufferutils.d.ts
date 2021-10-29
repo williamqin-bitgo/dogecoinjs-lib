@@ -9,6 +9,7 @@ export declare function cloneBuffer(buffer: Buffer): Buffer;
 export declare class BufferWriter {
     buffer: Buffer;
     offset: number;
+    static withCapacity(size: number): BufferWriter;
     constructor(buffer: Buffer, offset?: number);
     writeUInt8(i: number): void;
     writeInt32(i: number): void;
@@ -18,6 +19,7 @@ export declare class BufferWriter {
     writeSlice(slice: Buffer): void;
     writeVarSlice(slice: Buffer): void;
     writeVector(vector: Buffer[]): void;
+    end(): Buffer;
 }
 /**
  * Helper class for reading of bitcoin data types from a buffer.

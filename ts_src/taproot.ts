@@ -23,6 +23,7 @@ const TAGS = [
   'TapTweak',
   'KeyAgg list',
   'KeyAgg coefficient',
+  'TapSighash',
 ] as const;
 type TaggedHashPrefix = typeof TAGS[number];
 /** An object mapping tags to their tagged hash prefix of [SHA256(tag) | SHA256(tag)] */
@@ -33,7 +34,7 @@ const TAGGED_HASH_PREFIXES = Object.fromEntries(
   }),
 ) as { [k in TaggedHashPrefix]: Buffer };
 
-function taggedHash(prefix: TaggedHashPrefix, data: Buffer): Buffer {
+export function taggedHash(prefix: TaggedHashPrefix, data: Buffer): Buffer {
   return bcrypto.sha256(Buffer.concat([TAGGED_HASH_PREFIXES[prefix], data]));
 }
 

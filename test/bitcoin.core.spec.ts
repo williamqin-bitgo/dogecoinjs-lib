@@ -2,6 +2,7 @@ import * as assert from 'assert';
 import * as base58 from 'bs58';
 import { describe, it } from 'mocha';
 import * as bitcoin from '..';
+import { Transaction } from '..';
 import * as base58EncodeDecode from './fixtures/core/base58_encode_decode.json';
 import * as base58KeysInvalid from './fixtures/core/base58_keys_invalid.json';
 import * as base58KeysValid from './fixtures/core/base58_keys_valid.json';
@@ -182,6 +183,7 @@ describe('Bitcoin-core', () => {
       const inIndex = f[2] as number;
       const hashType = f[3] as number;
       const expectedHash = f[4];
+      const expectedHashSchnorr = f[5];
 
       const hashTypes = [];
       if ((hashType & 0x1f) === bitcoin.Transaction.SIGHASH_NONE)
@@ -224,6 +226,14 @@ describe('Bitcoin-core', () => {
               hashType < 0 ? 0x100000000 + hashType : hashType,
             ),
           );
+
+          const res = transaction.hashForWitnessV1(
+            inIndex,
+            transaction.ins.map(s => s.script),
+            transaction.ins.map(_ => 0),
+            Transaction.SIGHASH_ALL,
+          );
+          console.log({ res, expectedHashSchnorr });
         },
       );
     });
