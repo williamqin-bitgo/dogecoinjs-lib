@@ -345,6 +345,8 @@ export class Transaction {
     prevOutScripts: Buffer[],
     values: number[],
     hashType: number,
+    leafHash?: Buffer,
+    annex?: Buffer,
   ): Buffer {
     // https://github.com/bitcoin/bips/blob/master/bip-0341.mediawiki#common-signature-message
     typeforce(
@@ -380,7 +382,6 @@ export class Transaction {
     let hashScriptPubKeys = EMPTY_BUFFER;
     let hashSequences = EMPTY_BUFFER;
     let hashOutputs = EMPTY_BUFFER;
-    let hashAnnex = EMPTY_BUFFER;
 
     if (!isAnyoneCanPay) {
       let bufferWriter = BufferWriter.withCapacity(36 * this.ins.length);
@@ -395,10 +396,10 @@ export class Transaction {
       hashAmounts = bcrypto.sha256(bufferWriter.end());
 
       bufferWriter = BufferWriter.withCapacity(
-        prevOutScripts.map(s => s.length).reduce((a, b) => a + b),
+        prevOutScripts.map(varSliceSize).reduce((a, b) => a + b),
       );
       prevOutScripts.forEach(prevOutScript =>
-        bufferWriter.writeSlice(prevOutScript),
+        bufferWriter.writeVarSlice(prevOutScript),
       );
       hashScriptPubKeys = bcrypto.sha256(bufferWriter.end());
 
@@ -430,69 +431,64 @@ export class Transaction {
       hashOutputs = bcrypto.sha256(bufferWriter.end());
     }
 
-    const input = this.ins[inIndex];
-
-    const hasAnnex =
-      input.witness &&
-      input.witness.length &&
-      input.witness[input.witness.length - 1][0] === 0x50;
-    let spendType;
-    if (hasAnnex) {
-      const extFlag = input.witness.length > 3 ? 1 : 0;
-      spendType = extFlag * 2 + 1;
-    } else {
-      const extFlag = input.witness.length > 2 ? 1 : 0;
-      spendType = extFlag * 2;
-    }
-
-    if (hasAnnex) {
-      const annex = input.witness[input.witness.length - 1];
-      const bufferWriter = BufferWriter.withCapacity(varSliceSize(annex));
-      bufferWriter.writeVarSlice(annex);
-      hashAnnex = bcrypto.sha256(bufferWriter.end());
-    }
+    const spendType = (leafHash ? 2 : 0) + (annex ? 1 : 0);
 
     // Length calculation from:
     // https://github.com/bitcoin/bips/blob/master/bip-0341.mediawiki#cite_note-14
+    // With extension from:
+    // https://github.com/bitcoin/bips/blob/master/bip-0342.mediawiki#signature-validation
     const sigMsgSize =
-      174 - (isAnyoneCanPay ? 49 : 0) - (isNone ? 32 : 0) + (hasAnnex ? 32 : 0);
-    const bufferWriter = BufferWriter.withCapacity(sigMsgSize);
+      174 -
+      (isAnyoneCanPay ? 49 : 0) -
+      (isNone ? 32 : 0) +
+      (annex ? 32 : 0) +
+      (leafHash ? 37 : 0);
+    const sigMsgWriter = BufferWriter.withCapacity(sigMsgSize);
 
-    bufferWriter.writeUInt8(hashType);
+    sigMsgWriter.writeUInt8(hashType);
     // Transaction
-    bufferWriter.writeInt32(this.version);
-    bufferWriter.writeUInt32(this.locktime);
-    bufferWriter.writeSlice(hashPrevouts);
-    bufferWriter.writeSlice(hashAmounts);
-    bufferWriter.writeSlice(hashScriptPubKeys);
-    bufferWriter.writeSlice(hashSequences);
+    sigMsgWriter.writeInt32(this.version);
+    sigMsgWriter.writeUInt32(this.locktime);
+    sigMsgWriter.writeSlice(hashPrevouts);
+    sigMsgWriter.writeSlice(hashAmounts);
+    sigMsgWriter.writeSlice(hashScriptPubKeys);
+    sigMsgWriter.writeSlice(hashSequences);
     if (!(isNone || isSingle)) {
-      bufferWriter.writeSlice(hashOutputs);
+      sigMsgWriter.writeSlice(hashOutputs);
     }
     // Input
-    bufferWriter.writeUInt8(spendType);
+    sigMsgWriter.writeUInt8(spendType);
     if (isAnyoneCanPay) {
-      bufferWriter.writeSlice(input.hash);
-      bufferWriter.writeUInt32(input.index);
-      bufferWriter.writeVarSlice(prevOutScripts[inIndex]);
-      bufferWriter.writeUInt64(values[inIndex]);
-      bufferWriter.writeUInt32(input.sequence);
+      const input = this.ins[inIndex];
+      sigMsgWriter.writeSlice(input.hash);
+      sigMsgWriter.writeUInt32(input.index);
+      sigMsgWriter.writeVarSlice(prevOutScripts[inIndex]);
+      sigMsgWriter.writeUInt64(values[inIndex]);
+      sigMsgWriter.writeUInt32(input.sequence);
     } else {
-      bufferWriter.writeUInt32(inIndex);
+      sigMsgWriter.writeUInt32(inIndex);
     }
-    if (hasAnnex) {
-      bufferWriter.writeSlice(hashAnnex);
+    if (annex) {
+      const bufferWriter = BufferWriter.withCapacity(varSliceSize(annex));
+      bufferWriter.writeVarSlice(annex);
+      sigMsgWriter.writeSlice(bcrypto.sha256(bufferWriter.end()));
     }
     // Output
     if (isSingle) {
-      bufferWriter.writeSlice(hashOutputs);
+      sigMsgWriter.writeSlice(hashOutputs);
+    }
+    // BIP342 extension
+    if (leafHash) {
+      sigMsgWriter.writeSlice(leafHash);
+      sigMsgWriter.writeUInt8(0);
+      sigMsgWriter.writeUInt32(0xffffffff);
     }
 
     // Extra zero byte because:
     // https://github.com/bitcoin/bips/blob/master/bip-0341.mediawiki#cite_note-19
     return taggedHash(
       'TapSighash',
-      Buffer.concat([new Uint8Array([0x00]), bufferWriter.end()]),
+      Buffer.concat([new Uint8Array([0x00]), sigMsgWriter.end()]),
     );
   }
 
