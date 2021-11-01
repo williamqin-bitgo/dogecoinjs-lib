@@ -6,6 +6,7 @@ import { p2pk } from './p2pk';
 import { p2pkh } from './p2pkh';
 import { p2sh } from './p2sh';
 import { p2tr } from './p2tr';
+import { p2tr_ns } from './p2tr_ns';
 import { p2wpkh } from './p2wpkh';
 import { p2wsh } from './p2wsh';
 export interface Payment {
@@ -37,4 +38,4 @@ export interface PaymentOpts {
 export declare type StackElement = Buffer | number;
 export declare type Stack = StackElement[];
 export declare type StackFunction = () => Stack;
-export { embed, p2ms, p2pk, p2pkh, p2sh, p2tr, p2wpkh, p2wsh };
+export { embed, p2ms, p2pk, p2pkh, p2sh, p2tr, p2tr_ns, p2wpkh, p2wsh };

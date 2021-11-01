@@ -9,6 +9,7 @@ declare const types: {
     P2WPKH: string;
     P2WSH: string;
     P2TR: string;
+    P2TR_NS: string;
     WITNESS_COMMITMENT: string;
 };
 declare function classifyOutput(script: Buffer): string;
