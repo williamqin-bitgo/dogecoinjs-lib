@@ -5,6 +5,7 @@ import * as pubKey from './templates/pubkey';
 import * as pubKeyHash from './templates/pubkeyhash';
 import * as scriptHash from './templates/scripthash';
 import * as taproot from './templates/taproot';
+import * as taprootnofn from './templates/taprootnofn';
 import * as witnessCommitment from './templates/witnesscommitment';
 import * as witnessPubKeyHash from './templates/witnesspubkeyhash';
 import * as witnessScriptHash from './templates/witnessscripthash';
@@ -18,7 +19,8 @@ const types = {
   P2SH: 'scripthash' as string,
   P2WPKH: 'witnesspubkeyhash' as string,
   P2WSH: 'witnessscripthash' as string,
-  P2TR: 'taproot',
+  P2TR: 'taproot' as string,
+  P2TR_NS: 'taprootnofn' as string,
   WITNESS_COMMITMENT: 'witnesscommitment' as string,
 };
 
@@ -33,6 +35,7 @@ function classifyOutput(script: Buffer): string {
   const chunks = decompile(script);
   if (!chunks) throw new TypeError('Invalid script');
 
+  if (taprootnofn.output.check(chunks)) return types.P2TR_NS;
   if (multisig.output.check(chunks)) return types.P2MS;
   if (pubKey.output.check(chunks)) return types.P2PK;
   if (witnessCommitment.output.check(chunks)) return types.WITNESS_COMMITMENT;
@@ -48,6 +51,7 @@ function classifyInput(script: Buffer, allowIncomplete?: boolean): string {
 
   if (pubKeyHash.input.check(chunks)) return types.P2PKH;
   if (scriptHash.input.check(chunks, allowIncomplete)) return types.P2SH;
+  if (taprootnofn.input.check(chunks, allowIncomplete)) return types.P2TR_NS;
   if (multisig.input.check(chunks, allowIncomplete)) return types.P2MS;
   if (pubKey.input.check(chunks)) return types.P2PK;
 

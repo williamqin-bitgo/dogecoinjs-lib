@@ -8,6 +8,7 @@ const pubKey = require('./templates/pubkey');
 const pubKeyHash = require('./templates/pubkeyhash');
 const scriptHash = require('./templates/scripthash');
 const taproot = require('./templates/taproot');
+const taprootnofn = require('./templates/taprootnofn');
 const witnessCommitment = require('./templates/witnesscommitment');
 const witnessPubKeyHash = require('./templates/witnesspubkeyhash');
 const witnessScriptHash = require('./templates/witnessscripthash');
@@ -21,6 +22,7 @@ const types = {
   P2WPKH: 'witnesspubkeyhash',
   P2WSH: 'witnessscripthash',
   P2TR: 'taproot',
+  P2TR_NS: 'taprootnofn',
   WITNESS_COMMITMENT: 'witnesscommitment',
 };
 exports.types = types;
@@ -33,6 +35,7 @@ function classifyOutput(script) {
   // XXX: optimization, below functions .decompile before use
   const chunks = (0, script_1.decompile)(script);
   if (!chunks) throw new TypeError('Invalid script');
+  if (taprootnofn.output.check(chunks)) return types.P2TR_NS;
   if (multisig.output.check(chunks)) return types.P2MS;
   if (pubKey.output.check(chunks)) return types.P2PK;
   if (witnessCommitment.output.check(chunks)) return types.WITNESS_COMMITMENT;
@@ -46,6 +49,7 @@ function classifyInput(script, allowIncomplete) {
   if (!chunks) throw new TypeError('Invalid script');
   if (pubKeyHash.input.check(chunks)) return types.P2PKH;
   if (scriptHash.input.check(chunks, allowIncomplete)) return types.P2SH;
+  if (taprootnofn.input.check(chunks, allowIncomplete)) return types.P2TR_NS;
   if (multisig.input.check(chunks, allowIncomplete)) return types.P2MS;
   if (pubKey.input.check(chunks)) return types.P2PK;
   return types.NONSTANDARD;
