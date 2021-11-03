@@ -1,5 +1,6 @@
 import * as bip32 from 'bip32';
 import * as address from './address';
+import * as classify from './classify';
 import * as crypto from './crypto';
 import * as ECPair from './ecpair';
 import * as networks from './networks';
@@ -7,9 +8,8 @@ import * as payments from './payments';
 import * as schnorrBip340 from './schnorrBip340';
 import * as script from './script';
 import * as taproot from './taproot';
-export { ECPair, address, bip32, crypto, networks, payments, schnorrBip340, script, taproot, };
+export { ECPair, address, bip32, classify, crypto, networks, payments, schnorrBip340, script, taproot, };
 export { Block } from './block';
-export { input, output, witness, types } from './classify';
 export { Psbt, PsbtTxInput, PsbtTxOutput } from './psbt';
 export { OPS as opcodes } from './script';
 export { Transaction } from './transaction';
