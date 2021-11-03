@@ -28,6 +28,8 @@ export interface Payment {
   redeemIndex?: number;
   witness?: Buffer[];
   weight?: number;
+  controlBlock?: Buffer;
+  annex?: Buffer;
 }
 
 export type PaymentCreator = (a: Payment, opts?: PaymentOpts) => Payment;

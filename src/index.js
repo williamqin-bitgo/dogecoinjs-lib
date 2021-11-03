@@ -1,6 +1,6 @@
 'use strict';
 Object.defineProperty(exports, '__esModule', { value: true });
-exports.TransactionBuilder = exports.Transaction = exports.opcodes = exports.Psbt = exports.types = exports.witness = exports.output = exports.input = exports.Block = exports.script = exports.payments = exports.networks = exports.crypto = exports.bip32 = exports.address = exports.ECPair = void 0;
+exports.TransactionBuilder = exports.Transaction = exports.opcodes = exports.Psbt = exports.types = exports.witness = exports.output = exports.input = exports.Block = exports.taproot = exports.script = exports.payments = exports.networks = exports.crypto = exports.bip32 = exports.address = exports.ECPair = void 0;
 const bip32 = require('bip32');
 exports.bip32 = bip32;
 const address = require('./address');
@@ -15,6 +15,8 @@ const payments = require('./payments');
 exports.payments = payments;
 const script = require('./script');
 exports.script = script;
+const taproot = require('./taproot');
+exports.taproot = taproot;
 var block_1 = require('./block');
 Object.defineProperty(exports, 'Block', {
   enumerable: true,

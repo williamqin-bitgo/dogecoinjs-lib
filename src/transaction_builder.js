@@ -8,8 +8,10 @@ const bcrypto = require('./crypto');
 const ECPair = require('./ecpair');
 const networks = require('./networks');
 const payments = require('./payments');
+const schnorrBip340_1 = require('./schnorrBip340');
 const bscript = require('./script');
 const script_1 = require('./script');
+const taproot = require('./taproot');
 const transaction_1 = require('./transaction');
 const types = require('./types');
 const typeforce = require('typeforce');
@@ -33,6 +35,10 @@ const PREVOUT_TYPES = new Set([
   'p2sh-p2wsh-p2pkh',
   'p2sh-p2wsh-p2pk',
   'p2sh-p2wsh-p2ms',
+  // P2TR KeyPath
+  'p2tr',
+  // P2TR ScriptPath
+  'p2tr-p2ns',
 ]);
 function tfMessage(type, value, message) {
   try {
@@ -115,11 +121,10 @@ class TransactionBuilder {
     // XXX: this might eventually become more complex depending on what the versions represent
     this.__TX.version = version;
   }
-  addInput(txHash, vout, sequence, prevOutScript) {
+  addInput(txHash, vout, sequence, prevOutScript, value) {
     if (!this.__canModifyInputs()) {
       throw new Error('No, this would invalidate signatures');
     }
-    let value;
     // is it a hex string?
     if (txIsString(txHash)) {
       // transaction hashs's are displayed in reverse order, un-reverse it
@@ -160,6 +165,8 @@ class TransactionBuilder {
     hashType,
     witnessValue,
     witnessScript,
+    controlBlock,
+    annex,
   ) {
     trySign(
       getSigningData(
@@ -173,6 +180,8 @@ class TransactionBuilder {
         hashType,
         witnessValue,
         witnessScript,
+        controlBlock,
+        annex,
         this.__USE_LOW_R,
       ),
     );
@@ -186,8 +195,8 @@ class TransactionBuilder {
       throw new Error('Duplicate TxOut: ' + prevTxOut);
     let input = {};
     // derive what we can from the scriptSig
-    if (options.script !== undefined) {
-      input = expandInput(options.script, options.witness || []);
+    if (options.script !== undefined || options.witness !== undefined) {
+      input = expandInput(options.script, options.witness);
     }
     // if an input value was given, retain it
     if (options.value !== undefined) {
@@ -234,7 +243,9 @@ class TransactionBuilder {
         if (!allowIncomplete) throw new Error('Not enough information');
         return;
       }
-      tx.setInputScript(i, result.input);
+      if (result.input) {
+        tx.setInputScript(i, result.input);
+      }
       tx.setWitness(i, result.witness);
     });
     if (!allowIncomplete) {
@@ -260,7 +271,10 @@ class TransactionBuilder {
     });
   }
   __needsOutputs(signingHashType) {
-    if (signingHashType === transaction_1.Transaction.SIGHASH_ALL) {
+    if (
+      signingHashType === transaction_1.Transaction.SIGHASH_ALL ||
+      signingHashType === transaction_1.Transaction.SIGHASH_DEFAULT
+    ) {
       return this.__TX.outs.length === 0;
     }
     // if inputs are being signed with SIGHASH_NONE, we don't strictly need outputs
@@ -310,10 +324,11 @@ class TransactionBuilder {
   }
 }
 exports.TransactionBuilder = TransactionBuilder;
-function expandInput(scriptSig, witnessStack, type, scriptPubKey) {
-  if (scriptSig.length === 0 && witnessStack.length === 0) return {};
+function expandInput(scriptSig, witnessStack = [], type, scriptPubKey) {
+  if (scriptSig && scriptSig.length === 0 && witnessStack.length === 0)
+    return {};
   if (!type) {
-    let ssType = classify.input(scriptSig, true);
+    let ssType = scriptSig ? classify.input(scriptSig, true) : undefined;
     let wsType = classify.witness(witnessStack, true);
     if (ssType === SCRIPT_TYPES.NONSTANDARD) ssType = undefined;
     if (wsType === SCRIPT_TYPES.NONSTANDARD) wsType = undefined;
@@ -363,6 +378,22 @@ function expandInput(scriptSig, witnessStack, type, scriptPubKey) {
         pubkeys,
         signatures,
         maxSignatures: m,
+      };
+    }
+    case SCRIPT_TYPES.P2TR_NS: {
+      const { n, pubkeys, signatures } = payments.p2tr_ns(
+        {
+          // Witness signatures are reverse of pubkeys, because it's a stack
+          signatures: witnessStack.length ? witnessStack.reverse() : undefined,
+          output: scriptPubKey,
+        },
+        { allowIncomplete: true },
+      );
+      return {
+        prevOutType: SCRIPT_TYPES.P2TR_NS,
+        pubkeys,
+        signatures,
+        maxSignatures: n,
       };
     }
   }
@@ -417,6 +448,44 @@ function expandInput(scriptSig, witnessStack, type, scriptPubKey) {
       signatures: expanded.signatures,
     };
   }
+  if (type === SCRIPT_TYPES.P2TR) {
+    const parsedWitness = taproot.parseTaprootWitness(witnessStack);
+    if (parsedWitness.spendType === 'Key') {
+      // key path spend, nothing to expand
+      const { signature, annex } = parsedWitness;
+      return {
+        prevOutType: SCRIPT_TYPES.P2TR,
+        signatures: [signature],
+        annex,
+      };
+    } else {
+      // script path spend
+      const { tapscript, controlBlock, annex } = parsedWitness;
+      const prevOutScript = payments.p2tr({
+        redeems: [{ output: tapscript }],
+        redeemIndex: 0,
+        controlBlock,
+        annex,
+      }).output;
+      const witnessScriptType = classify.output(tapscript);
+      const { pubkeys, signatures } = expandInput(
+        undefined,
+        parsedWitness.scriptSig,
+        witnessScriptType,
+        tapscript,
+      );
+      return {
+        prevOutScript,
+        prevOutType: SCRIPT_TYPES.P2TR,
+        witnessScript: tapscript,
+        witnessScriptType,
+        controlBlock,
+        annex,
+        pubkeys,
+        signatures,
+      };
+    }
+  }
   return {
     prevOutType: SCRIPT_TYPES.NONSTANDARD,
     prevOutScript: scriptSig,
@@ -452,7 +521,7 @@ function fixMultisigOrder(input, transaction, vin) {
     return match;
   });
 }
-function expandOutput(script, ourPubKey) {
+function expandOutput(script, ourPubKey, controlBlock) {
   typeforce(types.Buffer, script);
   const type = classify.output(script);
   switch (type) {
@@ -480,6 +549,31 @@ function expandOutput(script, ourPubKey) {
         signatures: [undefined],
       };
     }
+    case SCRIPT_TYPES.P2TR: {
+      if (!ourPubKey) return { type };
+      // HACK ourPubKey to BIP340-style
+      if (ourPubKey.length === 33) ourPubKey = ourPubKey.slice(1);
+      // TODO: support multiple pubkeys
+      const p2tr = payments.p2tr({ pubkey: ourPubKey, controlBlock });
+      // Does tweaked output for a single pubkey match?
+      if (!script.equals(p2tr.output)) return { type };
+      // P2TR KeyPath, single key
+      return {
+        type,
+        pubkeys: [ourPubKey],
+        signatures: [undefined],
+      };
+    }
+    case SCRIPT_TYPES.P2TR_NS: {
+      const p2trNs = payments.p2tr_ns({ output: script });
+      // P2TR ScriptPath
+      return {
+        type,
+        pubkeys: p2trNs.pubkeys,
+        signatures: p2trNs.pubkeys.map(() => undefined),
+        maxSignatures: p2trNs.pubkeys.length,
+      };
+    }
     case SCRIPT_TYPES.P2PK: {
       const p2pk = payments.p2pk({ output: script });
       return {
@@ -500,7 +594,14 @@ function expandOutput(script, ourPubKey) {
   }
   return { type };
 }
-function prepareInput(input, ourPubKey, redeemScript, witnessScript) {
+function prepareInput(
+  input,
+  ourPubKey,
+  redeemScript,
+  witnessScript,
+  controlBlock,
+  annex,
+) {
   if (redeemScript && witnessScript) {
     const p2wsh = payments.p2wsh({
       redeem: { output: witnessScript },
@@ -534,7 +635,7 @@ function prepareInput(input, ourPubKey, redeemScript, witnessScript) {
       witnessScriptType: expanded.type,
       prevOutType: SCRIPT_TYPES.P2SH,
       prevOutScript: p2sh.output,
-      hasWitness: true,
+      witnessVersion: 0,
       signScript,
       signType: expanded.type,
       pubkeys: expanded.pubkeys,
@@ -574,12 +675,50 @@ function prepareInput(input, ourPubKey, redeemScript, witnessScript) {
       redeemScriptType: expanded.type,
       prevOutType: SCRIPT_TYPES.P2SH,
       prevOutScript: p2sh.output,
-      hasWitness: expanded.type === SCRIPT_TYPES.P2WPKH,
+      witnessVersion: expanded.type === SCRIPT_TYPES.P2WPKH ? 0 : undefined,
       signScript,
       signType: expanded.type,
       pubkeys: expanded.pubkeys,
       signatures: expanded.signatures,
       maxSignatures: expanded.maxSignatures,
+    };
+  }
+  if (witnessScript && controlBlock) {
+    // P2TR ScriptPath
+    /* tslint:disable-next-line:no-shadowed-variable */
+    let prevOutScript = input.prevOutScript;
+    if (!prevOutScript) {
+      prevOutScript = payments.p2tr({
+        redeems: [{ output: witnessScript }],
+        redeemIndex: 0,
+        controlBlock,
+        annex,
+      }).output;
+    }
+    const expanded = expandOutput(witnessScript, ourPubKey);
+    if (!expanded.pubkeys)
+      throw new Error(
+        expanded.type +
+          ' not supported as witnessScript (' +
+          bscript.toASM(witnessScript) +
+          ')',
+      );
+    if (input.signatures && input.signatures.some(x => x !== undefined)) {
+      expanded.signatures = input.signatures;
+    }
+    return {
+      witnessScript,
+      witnessScriptType: expanded.type,
+      prevOutType: SCRIPT_TYPES.P2TR,
+      prevOutScript,
+      witnessVersion: 1,
+      signScript: witnessScript,
+      signType: expanded.type,
+      pubkeys: expanded.pubkeys,
+      signatures: expanded.signatures,
+      maxSignatures: expanded.maxSignatures,
+      controlBlock,
+      annex,
     };
   }
   if (witnessScript) {
@@ -608,7 +747,7 @@ function prepareInput(input, ourPubKey, redeemScript, witnessScript) {
       witnessScriptType: expanded.type,
       prevOutType: SCRIPT_TYPES.P2WSH,
       prevOutScript: p2wsh.output,
-      hasWitness: true,
+      witnessVersion: 0,
       signScript,
       signType: expanded.type,
       pubkeys: expanded.pubkeys,
@@ -626,7 +765,6 @@ function prepareInput(input, ourPubKey, redeemScript, witnessScript) {
       throw new Error(
         'PrevOutScript is ' + input.prevOutType + ', requires witnessScript',
       );
-    if (!input.prevOutScript) throw new Error('PrevOutScript is missing');
     const expanded = expandOutput(input.prevOutScript, ourPubKey);
     if (!expanded.pubkeys)
       throw new Error(
@@ -642,10 +780,16 @@ function prepareInput(input, ourPubKey, redeemScript, witnessScript) {
     if (expanded.type === SCRIPT_TYPES.P2WPKH) {
       signScript = payments.p2pkh({ pubkey: expanded.pubkeys[0] }).output;
     }
+    let witnessVersion;
+    if (expanded.type === SCRIPT_TYPES.P2WPKH) {
+      witnessVersion = 0;
+    } else if (expanded.type === SCRIPT_TYPES.P2TR) {
+      witnessVersion = 1;
+    }
     return {
       prevOutType: expanded.type,
       prevOutScript: input.prevOutScript,
-      hasWitness: expanded.type === SCRIPT_TYPES.P2WPKH,
+      witnessVersion,
       signScript,
       signType: expanded.type,
       pubkeys: expanded.pubkeys,
@@ -657,7 +801,6 @@ function prepareInput(input, ourPubKey, redeemScript, witnessScript) {
   return {
     prevOutType: SCRIPT_TYPES.P2PKH,
     prevOutScript,
-    hasWitness: false,
     signScript: prevOutScript,
     signType: SCRIPT_TYPES.P2PKH,
     pubkeys: [ourPubKey],
@@ -720,6 +863,37 @@ function build(type, input, allowIncomplete) {
         },
       });
     }
+    case SCRIPT_TYPES.P2TR: {
+      if (input.witnessScriptType === SCRIPT_TYPES.P2TR_NS) {
+        // ScriptPath
+        const redeem = build(input.witnessScriptType, input, allowIncomplete);
+        return payments.p2tr({
+          output: input.prevOutScript,
+          controlBlock: input.controlBlock,
+          annex: input.annex,
+          redeems: [redeem],
+          redeemIndex: 0,
+        });
+      }
+      // KeyPath
+      if (signatures.length === 0) break;
+      return payments.p2tr({ pubkeys, signature: signatures[0] });
+    }
+    case SCRIPT_TYPES.P2TR_NS: {
+      const m = input.maxSignatures;
+      if (allowIncomplete) {
+        signatures = signatures.map(x => x || script_1.OPS.OP_0);
+      } else {
+        signatures = signatures.filter(x => x);
+      }
+      // if the transaction is not not complete (complete), or if signatures.length === m, validate
+      // otherwise, the number of OP_0's may be >= m, so don't validate (boo)
+      const validate = !allowIncomplete || m === signatures.length;
+      return payments.p2tr_ns(
+        { pubkeys, signatures },
+        { allowIncomplete, validate },
+      );
+    }
   }
 }
 function canSign(input) {
@@ -730,10 +904,13 @@ function canSign(input) {
     input.signatures !== undefined &&
     input.signatures.length === input.pubkeys.length &&
     input.pubkeys.length > 0 &&
-    (input.hasWitness === false || input.value !== undefined)
+    (input.witnessVersion === undefined || input.value !== undefined)
   );
 }
 function signatureHashType(buffer) {
+  if (bscript.isCanonicalSchnorrSignature(buffer) && buffer.length === 64) {
+    return transaction_1.Transaction.SIGHASH_DEFAULT;
+  }
   return buffer.readUInt8(buffer.length - 1);
 }
 function checkSignArgs(inputs, signParams) {
@@ -942,6 +1119,52 @@ function checkSignArgs(inputs, signParams) {
         `${posType} requires witnessScript`,
       );
       break;
+    case 'p2tr':
+      if (prevOutType && prevOutType !== 'taproot') {
+        throw new TypeError(
+          `input #${signParams.vin} is not of type ${posType}: ${prevOutType}`,
+        );
+      }
+      tfMessage(
+        typeforce.value(undefined),
+        signParams.witnessScript,
+        `${posType} requires NO witnessScript`,
+      );
+      tfMessage(
+        typeforce.value(undefined),
+        signParams.redeemScript,
+        `${posType} requires NO redeemScript`,
+      );
+      tfMessage(
+        typeforce.value(undefined),
+        signParams.witnessValue,
+        `${posType} requires NO witnessValue`,
+      );
+      break;
+    case 'p2tr-p2ns':
+      if (prevOutType && prevOutType !== 'taproot') {
+        throw new TypeError(
+          `input #${signParams.vin} is not of type ${posType}: ${prevOutType}`,
+        );
+      }
+      inputs[signParams.vin].prevOutType =
+        inputs[signParams.vin].prevOutType || 'taproot';
+      tfMessage(
+        typeforce.Buffer,
+        signParams.witnessScript,
+        `${posType} requires witnessScript`,
+      );
+      tfMessage(
+        typeforce.Buffer,
+        signParams.controlBlock,
+        `${posType} requires controlBlock`,
+      );
+      tfMessage(
+        typeforce.value(undefined),
+        signParams.redeemScript,
+        `${posType} requires NO redeemScript`,
+      );
+      break;
   }
 }
 function trySign({
@@ -951,20 +1174,54 @@ function trySign({
   signatureHash,
   hashType,
   useLowR,
+  taptreeRoot,
 }) {
+  if (input.witnessVersion === 1 && ourPubKey.length === 33)
+    ourPubKey = ourPubKey.slice(1);
   // enforce in order signing of public keys
   let signed = false;
   for (const [i, pubKey] of input.pubkeys.entries()) {
     if (!ourPubKey.equals(pubKey)) continue;
-    if (input.signatures[i]) throw new Error('Signature already exists');
+    if (input.signatures[i] && input.signatures[i].length > 0)
+      throw new Error('Signature already exists');
     // TODO: add tests
-    if (ourPubKey.length !== 33 && input.hasWitness) {
-      throw new Error(
-        'BIP143 rejects uncompressed public keys in P2WPKH or P2WSH',
-      );
+    if (ourPubKey.length !== 33 && input.witnessVersion === 0) {
+      throw new Error('BIP143 (Witness v0) inputs require compressed pubkeys');
+    } else if (ourPubKey.length !== 32 && input.witnessVersion === 1) {
+      throw new Error('BIP341 (Witness v1) inputs require x-only pubkeys');
     }
-    const signature = keyPair.sign(signatureHash, useLowR);
-    input.signatures[i] = bscript.signature.encode(signature, hashType);
+    if (input.witnessVersion === 1) {
+      // FIXME: Workaround for not having general signSchnorr() support in
+      //        ECPair/bip32 yet.
+      let { privateKey } = keyPair;
+      if (!privateKey) {
+        throw new Error(`unexpected keypair`);
+      }
+      if (!input.witnessScript) {
+        privateKey = taproot.tapTweakPrivkey(
+          ourPubKey,
+          privateKey,
+          taptreeRoot,
+        );
+      }
+      // https://github.com/bitcoin/bips/blob/master/bip-0341.mediawiki#common-signature-message
+      const signature = (0, schnorrBip340_1.signSchnorrWithoutExtraData)(
+        signatureHash,
+        privateKey,
+      );
+      // SIGHASH_DEFAULT is omitted from the signature
+      if (hashType === transaction_1.Transaction.SIGHASH_DEFAULT) {
+        input.signatures[i] = signature;
+      } else {
+        input.signatures[i] = Buffer.concat([
+          signature,
+          new Uint8Array([hashType]),
+        ]);
+      }
+    } else {
+      const signature = keyPair.sign(signatureHash, useLowR);
+      input.signatures[i] = bscript.signature.encode(signature, hashType);
+    }
     signed = true;
   }
   if (!signed) throw new Error('Key pair cannot sign for this input');
@@ -980,6 +1237,8 @@ function getSigningData(
   hashType,
   witnessValue,
   witnessScript,
+  controlBlock,
+  annex,
   useLowR,
 ) {
   let vin;
@@ -998,6 +1257,8 @@ function getSigningData(
       hashType,
       witnessValue,
       witnessScript,
+      controlBlock,
+      annex,
     } = signParams);
   } else {
     throw new TypeError(
@@ -1011,8 +1272,6 @@ function getSigningData(
   if (keyPair.network && keyPair.network !== network)
     throw new TypeError('Inconsistent network');
   if (!inputs[vin]) throw new Error('No input at index: ' + vin);
-  hashType = hashType || transaction_1.Transaction.SIGHASH_ALL;
-  if (needsOutputs(hashType)) throw new Error('Transaction needs outputs');
   const input = inputs[vin];
   // if redeemScript was previously provided, enforce consistency
   if (
@@ -1037,23 +1296,56 @@ function getSigningData(
         ourPubKey,
         redeemScript,
         witnessScript,
+        controlBlock,
+        annex,
       );
       // updates inline
       Object.assign(input, prepared);
     }
     if (!canSign(input)) throw Error(input.prevOutType + ' not supported');
   }
+  // hashType can be 0 in Taproot, so can't use hashType || SIGHASH_ALL
+  if (input.witnessVersion === 1) {
+    hashType =
+      hashType === undefined
+        ? transaction_1.Transaction.SIGHASH_DEFAULT
+        : hashType;
+  } else {
+    hashType = hashType || transaction_1.Transaction.SIGHASH_ALL;
+  }
+  if (needsOutputs(hashType)) throw new Error('Transaction needs outputs');
+  // TODO: This is not the best place to do this, but might stick with it until PSBT
+  let leafHash;
+  let taptreeRoot;
+  if (controlBlock && witnessScript) {
+    leafHash = taproot.getTapleafHash(controlBlock, witnessScript);
+    taptreeRoot = taproot.getTaptreeRoot(controlBlock, witnessScript, leafHash);
+  }
   // ready to sign
   let signatureHash;
-  if (input.hasWitness) {
-    signatureHash = tx.hashForWitnessV0(
-      vin,
-      input.signScript,
-      input.value,
-      hashType,
-    );
-  } else {
-    signatureHash = tx.hashForSignature(vin, input.signScript, hashType);
+  switch (input.witnessVersion) {
+    case undefined:
+      signatureHash = tx.hashForSignature(vin, input.signScript, hashType);
+      break;
+    case 0:
+      signatureHash = tx.hashForWitnessV0(
+        vin,
+        input.signScript,
+        input.value,
+        hashType,
+      );
+      break;
+    case 1:
+      signatureHash = tx.hashForWitnessV1(
+        vin,
+        inputs.map(({ prevOutScript }) => prevOutScript),
+        inputs.map(({ value }) => value),
+        hashType,
+        leafHash,
+      );
+      break;
+    default:
+      throw new TypeError('Unsupported witness version');
   }
   return {
     input,
@@ -1062,5 +1354,6 @@ function getSigningData(
     signatureHash,
     hashType,
     useLowR: !!useLowR,
+    taptreeRoot,
   };
 }

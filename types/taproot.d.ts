@@ -6,6 +6,12 @@
 export declare const EVEN_Y_COORD_PREFIX: Uint8Array;
 declare const TAGS: readonly ["TapLeaf", "TapBranch", "TapTweak", "KeyAgg list", "KeyAgg coefficient", "TapSighash"];
 declare type TaggedHashPrefix = typeof TAGS[number];
+/**
+ * Calculates a BIP340-style tagged hash of the data with the given prefix.
+ * @param prefix the prefix to tag with
+ * @param data the data to hash
+ * @return {Buffer} the resulting tagged hash
+ */
 export declare function taggedHash(prefix: TaggedHashPrefix, data: Buffer): Buffer;
 /**
  * Aggregates a list of public keys into a single MuSig2* public key
@@ -34,17 +40,25 @@ export declare function hashTapLeaf(script: Buffer): Buffer;
  * @returns the tagged tapbranch hash
  */
 export declare function hashTapBranch(child1: Buffer, child2: Buffer): Buffer;
+/**
+ * Tweaks a privkey, using the tagged hash of its pubkey, and (optionally) a taptree root
+ * @param pubkey public key, used to calculate the tweak
+ * @param privkey the privkey to tweak
+ * @param taptreeRoot the taptree root tagged hash
+ * @returns {Buffer} the tweaked privkey
+ */
+export declare function tapTweakPrivkey(pubkey: Buffer, privkey: Buffer, taptreeRoot?: Buffer): Buffer;
 export interface TweakedPubkey {
     parity: 0 | 1;
     pubkey: Buffer;
 }
 /**
- * Tweaks an internal pubkey using the tagged hash of a taptree root.
+ * Tweaks an internal pubkey, using the tagged hash of itself, and (optionally) a taptree root
  * @param pubkey the internal pubkey to tweak
- * @param tapTreeRoot the taptree root tagged hash
- * @returns the tweaked pubkey
+ * @param taptreeRoot the taptree root tagged hash
+ * @returns {TweakedPubkey} the tweaked pubkey
  */
-export declare function tapTweakPubkey(pubkey: Buffer, tapTreeRoot?: Buffer): TweakedPubkey;
+export declare function tapTweakPubkey(pubkey: Buffer, taptreeRoot?: Buffer): TweakedPubkey;
 export interface Taptree {
     root: Buffer;
     paths: Buffer[][];
@@ -54,31 +68,67 @@ export interface Taptree {
  * list of scripts and corresponding weights.
  * @param scripts
  * @param weights
- * @returns the tagged hash of the taptree root
+ * @returns {Taptree} the tree, represented by its root hash, and the paths to that root from each of the input scripts
  */
 export declare function getHuffmanTaptree(scripts: Buffer[], weights: Array<number | undefined>): Taptree;
 export declare function getControlBlock(parity: 0 | 1, pubkey: Buffer, path: Buffer[]): Buffer;
+export interface KeyPathWitness {
+    spendType: 'Key';
+    signature: Buffer;
+    annex?: Buffer;
+}
+export interface ScriptPathWitness {
+    spendType: 'Script';
+    scriptSig: Buffer[];
+    tapscript: Buffer;
+    controlBlock: Buffer;
+    annex?: Buffer;
+}
+export interface ControlBlock {
+    parity: number;
+    internalPubkey: Buffer;
+    leafVersion: number;
+    path: Buffer[];
+}
 /**
- * Identifies and removes the annex from a taproot witness stack if the annex is present.
+ * Parses a taproot witness stack and extracts key data elements.
  * @param witnessStack
- * @returns the witness stack without an annex
+ * @returns {ScriptPathWitness|KeyPathWitness} an object representing the
+ * parsed witness for a script path or key path spend.
+ * @throws {Error} if the witness stack does not conform to the BIP 341 script validation rules
  */
-export declare function removeAnnex(witnessStack: Buffer[]): Buffer[];
+export declare function parseTaprootWitness(witnessStack: Buffer[]): ScriptPathWitness | KeyPathWitness;
+/**
+ * Parses a taproot control block.
+ * @param controlBlock the control block to parse
+ * @returns {ControlBlock} the parsed control block
+ * @throws {Error} if the witness stack does not conform to the BIP 341 script validation rules
+ */
+export declare function parseControlBlock(controlBlock: Buffer): ControlBlock;
+/**
+ * Calculates the tapleaf hash from a control block and script.
+ * @param controlBlock the control block, either raw or parsed
+ * @param tapscript the leaf script corresdponding to the control block
+ * @returns {Buffer} the tapleaf hash
+ */
+export declare function getTapleafHash(controlBlock: Buffer | ControlBlock, tapscript: Buffer): Buffer;
+/**
+ * Calculates the taptree root hash from a control block and script.
+ * @param controlBlock the control block, either raw or parsed
+ * @param tapscript the leaf script corresdponding to the control block
+ * @param tapleafHash the leaf hash if already calculated
+ * @returns {Buffer} the taptree root hash
+ */
+export declare function getTaptreeRoot(controlBlock: Buffer | ControlBlock, tapscript: Buffer, tapleafHash?: Buffer): Buffer;
 /**
  * Checks whether the tapscript and control block from a witness stack matches a 32 byte witness
  * program (aka taproot pubkey) by validating the merkle proof for its inclusion in the taptree.
- * @param witnessStack a stack of witness elements containing the tapscript and control block
+ * @param scriptPathWitness an object representing a stack of script path witness elements
  * @param expectedTaprootPubkey the 32-byte array containing the witness program (the second
  * push in the scriptPubKey) which represents a public key according to BIP340 and which we
  * expect to match the taproot pubkey derived from the control block
  * @returns `true` if the tapscript matches the witness program, otherwise `false`
  * @throws if the witness stack does not conform to the BIP 341 script validation rules
  */
-export declare function isValidTapscript(witnessStack: Buffer[], expectedTaprootPubkey: Buffer): boolean;
-/**
- * Checks whether an array of buffers can be parsed according to the BIP 341 script validation rules
- * @param chunks
- * @returns `true` if `chunks` can be parsed according to the BIP 341 script validation rules, otherwise `false`
- */
-export declare function isScriptPathSpend(chunks: Buffer[]): boolean;
+export declare function isValidTapscript(scriptPathWitness: ScriptPathWitness, expectedTaprootPubkey: Buffer): boolean;
 export {};

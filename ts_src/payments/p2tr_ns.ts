@@ -27,7 +27,12 @@ export function p2tr_ns(a: Payment, opts?: PaymentOpts): Payment {
   opts = Object.assign({ validate: true }, opts || {});
 
   function isAcceptableSignature(x: Buffer | number): boolean {
-    if (Buffer.isBuffer(x)) return bscript.isCanonicalSchnorrSignature(x);
+    if (Buffer.isBuffer(x))
+      return (
+        // empty signatures may be represented as empty buffers
+        (opts && opts.allowIncomplete && x.length === 0) ||
+        bscript.isCanonicalSchnorrSignature(x)
+      );
     return !!(opts && opts.allowIncomplete && x === OPS.OP_0);
   }
 

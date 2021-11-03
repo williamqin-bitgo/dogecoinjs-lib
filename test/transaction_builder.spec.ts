@@ -31,6 +31,7 @@ function constructSign(
       let redeemScript;
       let witnessScript;
       let witnessValue;
+      let controlBlock;
 
       if (sign.redeemScript) {
         redeemScript = bscript.fromASM(sign.redeemScript);
@@ -44,6 +45,10 @@ function constructSign(
         witnessScript = bscript.fromASM(sign.witnessScript);
       }
 
+      if (sign.controlBlock) {
+        controlBlock = Buffer.from(sign.controlBlock, 'hex');
+      }
+
       if (useOldSignArgs) {
         // DEPRECATED: v6 will remove this interface
         txb.sign(
@@ -53,6 +58,7 @@ function constructSign(
           sign.hashType,
           witnessValue,
           witnessScript,
+          controlBlock,
         );
       } else {
         // prevOutScriptType is required, see /ts_src/transaction_builder.ts
@@ -65,6 +71,7 @@ function constructSign(
           hashType: sign.hashType,
           witnessValue,
           witnessScript,
+          controlBlock,
         });
       }
 
@@ -107,7 +114,7 @@ function construct(
       prevTxScript = bscript.fromASM(input.prevTxScript);
     }
 
-    txb.addInput(prevTx, input.vout, input.sequence, prevTxScript);
+    txb.addInput(prevTx, input.vout, input.sequence, prevTxScript, input.value);
   });
 
   f.outputs.forEach((output: any) => {
