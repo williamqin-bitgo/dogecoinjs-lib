@@ -1,6 +1,6 @@
 'use strict';
 Object.defineProperty(exports, '__esModule', { value: true });
-exports.TransactionBuilder = exports.Transaction = exports.opcodes = exports.Psbt = exports.Block = exports.taproot = exports.script = exports.schnorrBip340 = exports.payments = exports.networks = exports.crypto = exports.classify = exports.bip32 = exports.address = exports.ECPair = void 0;
+exports.TransactionBuilder = exports.Transaction = exports.opcodes = exports.Psbt = exports.Block = exports.taproot = exports.script = exports.schnorrBip340 = exports.payments = exports.networks = exports.crypto = exports.classify = exports.bip32 = exports.address = exports.ScriptSignature = exports.ECPair = void 0;
 const bip32 = require('bip32');
 exports.bip32 = bip32;
 const address = require('./address');
@@ -19,6 +19,8 @@ const schnorrBip340 = require('./schnorrBip340');
 exports.schnorrBip340 = schnorrBip340;
 const script = require('./script');
 exports.script = script;
+const ScriptSignature = require('./script_signature');
+exports.ScriptSignature = ScriptSignature;
 const taproot = require('./taproot');
 exports.taproot = taproot;
 var block_1 = require('./block');

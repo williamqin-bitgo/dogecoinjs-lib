@@ -7,10 +7,12 @@ import * as networks from './networks';
 import * as payments from './payments';
 import * as schnorrBip340 from './schnorrBip340';
 import * as script from './script';
+import * as ScriptSignature from './script_signature';
 import * as taproot from './taproot';
 
 export {
   ECPair,
+  ScriptSignature,
   address,
   bip32,
   classify,
