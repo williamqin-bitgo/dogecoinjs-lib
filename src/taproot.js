@@ -3,7 +3,7 @@
 // https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki
 // https://github.com/bitcoin/bips/blob/master/bip-0341.mediawiki
 Object.defineProperty(exports, '__esModule', { value: true });
-exports.isValidTapscript = exports.getTaptreeRoot = exports.getTapleafHash = exports.parseControlBlock = exports.parseTaprootWitness = exports.getControlBlock = exports.getHuffmanTaptree = exports.tapTweakPubkey = exports.tapTweakPrivkey = exports.hashTapBranch = exports.hashTapLeaf = exports.serializeScriptSize = exports.aggregateMuSigPubkeys = exports.taggedHash = exports.EVEN_Y_COORD_PREFIX = void 0;
+exports.getTaptreeRoot = exports.getTapleafHash = exports.parseControlBlock = exports.parseTaprootWitness = exports.getControlBlock = exports.getHuffmanTaptree = exports.tapTweakPubkey = exports.tapTweakPrivkey = exports.hashTapBranch = exports.hashTapLeaf = exports.serializeScriptSize = exports.aggregateMuSigPubkeys = exports.taggedHash = exports.EVEN_Y_COORD_PREFIX = void 0;
 const assert = require('assert');
 const FastPriorityQueue = require('fastpriorityqueue');
 const bcrypto = require('./crypto');
@@ -377,34 +377,3 @@ function getTaptreeRoot(controlBlock, tapscript, tapleafHash) {
   return taptreeMerkleHash;
 }
 exports.getTaptreeRoot = getTaptreeRoot;
-/**
- * Checks whether the tapscript and control block from a witness stack matches a 32 byte witness
- * program (aka taproot pubkey) by validating the merkle proof for its inclusion in the taptree.
- * @param scriptPathWitness an object representing a stack of script path witness elements
- * @param expectedTaprootPubkey the 32-byte array containing the witness program (the second
- * push in the scriptPubKey) which represents a public key according to BIP340 and which we
- * expect to match the taproot pubkey derived from the control block
- * @returns `true` if the tapscript matches the witness program, otherwise `false`
- * @throws if the witness stack does not conform to the BIP 341 script validation rules
- */
-function isValidTapscript(scriptPathWitness, expectedTaprootPubkey) {
-  const controlBlock = parseControlBlock(scriptPathWitness.controlBlock);
-  const { parity, internalPubkey } = controlBlock;
-  const taptreeRoot = getTaptreeRoot(controlBlock, scriptPathWitness.tapscript);
-  const tapTweak = taggedHash(
-    'TapTweak',
-    Buffer.concat([internalPubkey, taptreeRoot]),
-  );
-  // If t ≥ order of secp256k1, pointAddScalar call below will throw.
-  const taprootPubkey = ecc.pointAddScalar(
-    Buffer.concat([exports.EVEN_Y_COORD_PREFIX, internalPubkey]),
-    tapTweak,
-  );
-  const taprootPubkeyParity =
-    taprootPubkey[0] === exports.EVEN_Y_COORD_PREFIX[0] ? 0 : 1;
-  return (
-    Buffer.compare(expectedTaprootPubkey, taprootPubkey.slice(1)) === 0 &&
-    parity === taprootPubkeyParity
-  );
-}
-exports.isValidTapscript = isValidTapscript;
