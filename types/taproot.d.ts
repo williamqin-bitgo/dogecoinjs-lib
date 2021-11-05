@@ -120,15 +120,4 @@ export declare function getTapleafHash(controlBlock: Buffer | ControlBlock, taps
  * @returns {Buffer} the taptree root hash
  */
 export declare function getTaptreeRoot(controlBlock: Buffer | ControlBlock, tapscript: Buffer, tapleafHash?: Buffer): Buffer;
-/**
- * Checks whether the tapscript and control block from a witness stack matches a 32 byte witness
- * program (aka taproot pubkey) by validating the merkle proof for its inclusion in the taptree.
- * @param scriptPathWitness an object representing a stack of script path witness elements
- * @param expectedTaprootPubkey the 32-byte array containing the witness program (the second
- * push in the scriptPubKey) which represents a public key according to BIP340 and which we
- * expect to match the taproot pubkey derived from the control block
- * @returns `true` if the tapscript matches the witness program, otherwise `false`
- * @throws if the witness stack does not conform to the BIP 341 script validation rules
- */
-export declare function isValidTapscript(scriptPathWitness: ScriptPathWitness, expectedTaprootPubkey: Buffer): boolean;
 export {};

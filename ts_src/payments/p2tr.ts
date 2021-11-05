@@ -28,7 +28,7 @@ export function p2tr(a: Payment, opts?: PaymentOpts): Payment {
     !a.address &&
     !a.pubkey &&
     !a.pubkeys &&
-    !a.redeems &&
+    !(a.redeems && a.redeems.length) &&
     !a.output &&
     !a.witness
   )
@@ -60,6 +60,7 @@ export function p2tr(a: Payment, opts?: PaymentOpts): Payment {
       ),
       redeemIndex: typef.maybe(typef.Number), // Selects the redeem to spend
 
+      signature: typef.maybe(bscript.isCanonicalSchnorrSignature),
       controlBlock: typef.maybe(typef.Buffer),
       annex: typef.maybe(typef.Buffer),
     },
@@ -78,7 +79,11 @@ export function p2tr(a: Payment, opts?: PaymentOpts): Payment {
       data: Buffer.from(data),
     };
   });
-
+  const _outputPubkey = lazy.value(() => {
+    // we remove the first two bytes (OP_1 0x20) from the output script to
+    // extract the 32 byte taproot pubkey (aka witness program)
+    return a.output && a.output.slice(2);
+  });
   const _taptree = lazy.value(() => {
     if (!a.redeems) return;
     const outputs: Array<Buffer | undefined> = a.redeems.map(
@@ -90,9 +95,16 @@ export function p2tr(a: Payment, opts?: PaymentOpts): Payment {
       a.redeems.map(({ weight }) => weight),
     );
   });
+  const _parsedWitness = lazy.value(() => {
+    if (!a.witness) return;
+    return taproot.parseTaprootWitness(a.witness);
+  });
   const _parsedControlBlock = lazy.value(() => {
-    if (!a.controlBlock) return;
-    return taproot.parseControlBlock(a.controlBlock);
+    // Can't use o.controlBlock, because it could be circular
+    if (a.controlBlock) return taproot.parseControlBlock(a.controlBlock);
+    const parsedWitness = _parsedWitness();
+    if (parsedWitness && parsedWitness.spendType === 'Script')
+      return taproot.parseControlBlock(parsedWitness.controlBlock);
   });
   const _internalPubkey = lazy.value(() => {
     if (a.pubkey) {
@@ -106,9 +118,6 @@ export function p2tr(a: Payment, opts?: PaymentOpts): Payment {
     } else if (_parsedControlBlock()) {
       return _parsedControlBlock()!.internalPubkey;
     } else {
-      // no key path
-      if (!a.redeems) return; // must have either redeems or pubkey(s)
-
       // If there is no key path spending condition, we use an internal key with unknown secret key.
       // TODO: In order to avoid leaking the information that key path spending is not possible it
       // is recommended to pick a fresh integer r in the range 0...n-1 uniformly at random and use
@@ -119,35 +128,32 @@ export function p2tr(a: Payment, opts?: PaymentOpts): Payment {
     }
   });
   const _taprootPubkey = lazy.value(() => {
-    // this should be `a.output || _address()?.data` but prettier doesn't recognize ? operator
-    const output = a.output || (a.address ? _address()!.data : undefined);
-    if (output) {
-      // we remove the first two bytes (OP_1 0x20) from the output script to
-      // extract the 32 byte taproot pubkey (aka witness program)
-      return { pubkey: output.slice(2), parity: 0 as (0 | 1) };
-    }
-
-    const internalPubkey = _internalPubkey();
-    if (!internalPubkey) return;
-
-    let taptreeRoot;
+    const parsedControlBlock = _parsedControlBlock();
+    const parsedWitness = _parsedWitness();
+    // Refuse to create an unspendable key
     if (
-      a.controlBlock &&
-      a.redeems &&
-      a.redeems.length &&
-      a.redeemIndex !== undefined &&
-      a.redeems[a.redeemIndex].output
-    ) {
-      // Calculate taptree root from script + path
-      taptreeRoot = taproot.getTaptreeRoot(
-        _parsedControlBlock()!,
-        a.redeems[a.redeemIndex].output!,
-      );
-    } else {
-      const taptree = _taptree();
-      if (taptree) taptreeRoot = taptree.root;
+      !a.pubkey &&
+      !(a.pubkeys && a.pubkeys.length) &&
+      !a.redeems &&
+      !parsedControlBlock
+    )
+      return;
+    let taptreeRoot;
+    // Prefer to get the root via the control block because not all redeems may
+    // be available
+    if (parsedControlBlock) {
+      let tapscript;
+      if (parsedWitness && parsedWitness.spendType === 'Script') {
+        tapscript = parsedWitness.tapscript;
+      } else if (o.redeem && o.redeem.output) {
+        tapscript = o.redeem.output;
+      }
+      if (tapscript)
+        taptreeRoot = taproot.getTaptreeRoot(parsedControlBlock, tapscript);
     }
-    return taproot.tapTweakPubkey(internalPubkey, taptreeRoot);
+    if (!taptreeRoot && _taptree()) taptreeRoot = _taptree()!.root;
+
+    return taproot.tapTweakPubkey(_internalPubkey(), taptreeRoot);
   });
 
   const network = a.network || BITCOIN_NETWORK;
@@ -155,29 +161,34 @@ export function p2tr(a: Payment, opts?: PaymentOpts): Payment {
   const o: Payment = { network };
 
   lazy.prop(o, 'address', () => {
-    if (!a.output && !o.output) return;
-
+    const pubkey =
+      _outputPubkey() || (_taprootPubkey() && _taprootPubkey()!.pubkey);
     // only encode the 32 byte witness program as bech32m
-    const words = bech32m.toWords(_taprootPubkey()!.pubkey);
+    const words = bech32m.toWords(pubkey);
     words.unshift(0x01);
     return bech32m.encode(network.bech32, words);
   });
   lazy.prop(o, 'controlBlock', () => {
+    const parsedWitness = _parsedWitness();
+    if (parsedWitness && parsedWitness.spendType === 'Script')
+      return parsedWitness.controlBlock;
     const taprootPubkey = _taprootPubkey();
-    const internalPubkey = _internalPubkey();
     const taptree = _taptree();
-    if (
-      !taprootPubkey ||
-      !internalPubkey ||
-      !taptree ||
-      a.redeemIndex === undefined
-    )
-      return;
+    if (!taptree || !taprootPubkey) return;
     return taproot.getControlBlock(
       taprootPubkey.parity,
-      internalPubkey,
-      taptree.paths[a.redeemIndex],
+      _internalPubkey(),
+      taptree.paths[a.redeemIndex || 0],
     );
+  });
+  lazy.prop(o, 'signature', () => {
+    const parsedWitness = _parsedWitness();
+    if (parsedWitness && parsedWitness.spendType === 'Key')
+      return parsedWitness.signature;
+  });
+  lazy.prop(o, 'annex', () => {
+    if (!_parsedWitness()) return;
+    return _parsedWitness()!.annex;
   });
   lazy.prop(o, 'output', () => {
     if (a.address) {
@@ -195,43 +206,41 @@ export function p2tr(a: Payment, opts?: PaymentOpts): Payment {
     if (!a.redeems) {
       if (a.signature) return [a.signature]; // Keypath spend
       return;
-    } else if (a.redeemIndex === undefined) {
+    } else if (!o.redeem) {
       return; // No chosen redeem script, can't make witness
+    } else if (!o.controlBlock) {
+      return;
     }
 
-    const chosenRedeem = a.redeems[a.redeemIndex];
-    if (!chosenRedeem) return;
-
-    let witness;
+    let redeemWitness;
     // some callers may provide witness elements in the input script
     if (
-      chosenRedeem.input &&
-      chosenRedeem.input.length > 0 &&
-      chosenRedeem.output &&
-      chosenRedeem.output.length > 0
+      o.redeem.input &&
+      o.redeem.input.length > 0 &&
+      o.redeem.output &&
+      o.redeem.output.length > 0
     ) {
       // transform redeem input to witness stack
-      witness = bscript.toStack(bscript.decompile(chosenRedeem.input)!);
+      redeemWitness = bscript.toStack(bscript.decompile(o.redeem.input)!);
 
-      // assign, and blank the existing input
-      o.redeems![a.redeemIndex] = Object.assign({ witness }, chosenRedeem);
-      o.redeems![a.redeemIndex].input = EMPTY_BUFFER;
+      // assigns a new object to o.redeem
+      o.redeems![a.redeemIndex || 0] = Object.assign(
+        { witness: redeemWitness },
+        o.redeem,
+      );
+      o.redeem.input = EMPTY_BUFFER;
     } else if (
-      chosenRedeem.output &&
-      chosenRedeem.output.length > 0 &&
-      chosenRedeem.witness &&
-      chosenRedeem.witness.length > 0
+      o.redeem.output &&
+      o.redeem.output.length > 0 &&
+      o.redeem.witness &&
+      o.redeem.witness.length > 0
     ) {
-      witness = chosenRedeem.witness;
+      redeemWitness = o.redeem.witness;
     } else {
       return;
     }
 
-    // tapscript
-    witness.push(chosenRedeem.output);
-
-    if (!o.controlBlock) return;
-    witness.push(o.controlBlock);
+    const witness = [...redeemWitness, o.redeem.output, o.controlBlock];
 
     if (a.annex) {
       witness.push(a.annex);
@@ -244,71 +253,90 @@ export function p2tr(a: Payment, opts?: PaymentOpts): Payment {
     return nameParts.join('-');
   });
   lazy.prop(o, 'redeem', () => {
-    if (a.redeems && a.redeemIndex !== undefined)
-      return a.redeems[a.redeemIndex];
+    if (a.redeems) {
+      if (a.redeems.length > 1 && a.redeemIndex === undefined) return;
+      return a.redeems[a.redeemIndex || 0];
+    }
+    const parsedWitness = _parsedWitness();
+    if (parsedWitness && parsedWitness.spendType === 'Script')
+      return {
+        witness: parsedWitness.scriptSig,
+        output: parsedWitness.tapscript,
+      };
   });
 
   // extended validation
   if (opts.validate) {
-    // TODO: complete extended validation
+    const taprootPubkey = _taprootPubkey();
+
     if (a.output) {
       if (a.output[0] !== OPS.OP_1 || a.output[1] !== 0x20)
         throw new TypeError('Output is invalid');
 
-      if (a.address) {
-        // if we're passed both an output script and an address, ensure they match
-        if (Buffer.compare(_address()!.data, _taprootPubkey()!.pubkey) !== 0) {
-          throw new TypeError('mismatch between address & output');
-        }
-      }
+      // if we're passed both an output script and an address, ensure they match
+      if (a.address && !_outputPubkey()!.equals(_address()!.data))
+        throw new TypeError('mismatch between address & output');
+
+      if (taprootPubkey && !_outputPubkey()!.equals(taprootPubkey.pubkey))
+        throw new TypeError('mismatch between output and taproot pubkey');
     }
 
-    if (a.controlBlock && a.pubkeys && a.pubkeys.length) {
-      if (!_parsedControlBlock()!.internalPubkey.equals(_internalPubkey()!)) {
+    if (a.address)
+      if (taprootPubkey && !_address()!.data.equals(taprootPubkey.pubkey))
+        throw new TypeError('mismatch between address and taproot pubkey');
+
+    const parsedControlBlock = _parsedControlBlock();
+    if (parsedControlBlock) {
+      if (!parsedControlBlock.internalPubkey.equals(_internalPubkey()))
         throw new TypeError('Internal pubkey mismatch');
-      }
+      if (taprootPubkey && parsedControlBlock.parity !== taprootPubkey.parity)
+        throw new TypeError('Parity mismatch');
     }
 
-    if (a.signature) {
-      if (!bscript.isCanonicalSchnorrSignature(a.signature)) {
-        throw new TypeError('signature is not a valid schnorr signature');
-      }
-    }
-
-    if (a.witness) {
-      const parsedWitness = taproot.parseTaprootWitness(a.witness);
-
-      if (parsedWitness.spendType === 'Key') {
-        // parsedWitness is key path spend schnorr signature
-        if (
-          a.signature &&
-          Buffer.compare(a.signature, parsedWitness.signature) !== 0
-        ) {
-          throw new TypeError('mismatch between witness & signature');
-        }
-      } else {
-        // parsedWitness is script path spend witness stack
-        // ensure that our witness stack contains a script that is included in our taproot pub key
-        if (
-          !taproot.isValidTapscript(parsedWitness, _taprootPubkey()!.pubkey)
-        ) {
-          throw new TypeError(
-            'tapscript & control block does not match witness program ',
-          );
-        }
-      }
-    }
     if (a.redeems) {
+      if (!a.redeems.length) throw new TypeError('Empty redeems');
+      if (a.redeemIndex === undefined) {
+        if (a.redeems.length > 1)
+          throw new TypeError('No redeem index with > 1 redeem');
+      } else if (a.redeemIndex < 0 || a.redeemIndex >= a.redeems.length) {
+        throw new TypeError('invalid redeem index');
+      }
       a.redeems.forEach(redeem => {
         if (redeem.network && redeem.network !== network)
           throw new TypeError('Network mismatch');
       });
     }
-    if (a.redeemIndex !== undefined && a.redeems) {
-      if (a.redeemIndex < 0 || a.redeemIndex >= a.redeems.length)
-        throw new TypeError(
-          'Redeem index must be 0 <= redeemIndex < redeems.length',
-        );
+
+    const chosenRedeem = a.redeems && a.redeems[a.redeemIndex || 0];
+
+    const parsedWitness = _parsedWitness();
+    if (parsedWitness && parsedWitness.spendType === 'Key') {
+      if (a.controlBlock)
+        throw new TypeError('unexpected control block for key path');
+
+      if (a.signature && !a.signature.equals(parsedWitness.signature))
+        throw new TypeError('mismatch between witness & signature');
+    }
+    if (parsedWitness && parsedWitness.spendType === 'Script') {
+      if (a.signature)
+        throw new TypeError('unexpected signature with script path witness');
+
+      if (a.controlBlock && !a.controlBlock.equals(parsedWitness.controlBlock))
+        throw new TypeError('control block mismatch');
+
+      if (
+        a.annex &&
+        parsedWitness.annex &&
+        !a.annex.equals(parsedWitness.annex)
+      )
+        throw new TypeError('annex mismatch');
+
+      if (
+        chosenRedeem &&
+        chosenRedeem.output &&
+        !chosenRedeem.output.equals(parsedWitness.tapscript)
+      )
+        throw new TypeError('tapscript mismatch');
     }
   }
 
