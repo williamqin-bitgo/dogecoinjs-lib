@@ -174,11 +174,11 @@ export function p2tr(a: Payment, opts?: PaymentOpts): Payment {
       return parsedWitness.controlBlock;
     const taprootPubkey = _taprootPubkey();
     const taptree = _taptree();
-    if (!taptree || !taprootPubkey) return;
+    if (!taptree || !taprootPubkey || a.redeemIndex === undefined) return;
     return taproot.getControlBlock(
       taprootPubkey.parity,
       _internalPubkey(),
-      taptree.paths[a.redeemIndex || 0],
+      taptree.paths[a.redeemIndex],
     );
   });
   lazy.prop(o, 'signature', () => {
@@ -224,7 +224,7 @@ export function p2tr(a: Payment, opts?: PaymentOpts): Payment {
       redeemWitness = bscript.toStack(bscript.decompile(o.redeem.input)!);
 
       // assigns a new object to o.redeem
-      o.redeems![a.redeemIndex || 0] = Object.assign(
+      o.redeems![a.redeemIndex!] = Object.assign(
         { witness: redeemWitness },
         o.redeem,
       );
@@ -254,8 +254,8 @@ export function p2tr(a: Payment, opts?: PaymentOpts): Payment {
   });
   lazy.prop(o, 'redeem', () => {
     if (a.redeems) {
-      if (a.redeems.length > 1 && a.redeemIndex === undefined) return;
-      return a.redeems[a.redeemIndex || 0];
+      if (a.redeemIndex === undefined) return;
+      return a.redeems[a.redeemIndex];
     }
     const parsedWitness = _parsedWitness();
     if (parsedWitness && parsedWitness.spendType === 'Script')
@@ -295,10 +295,10 @@ export function p2tr(a: Payment, opts?: PaymentOpts): Payment {
 
     if (a.redeems) {
       if (!a.redeems.length) throw new TypeError('Empty redeems');
-      if (a.redeemIndex === undefined) {
-        if (a.redeems.length > 1)
-          throw new TypeError('No redeem index with > 1 redeem');
-      } else if (a.redeemIndex < 0 || a.redeemIndex >= a.redeems.length) {
+      if (
+        a.redeemIndex !== undefined &&
+        (a.redeemIndex < 0 || a.redeemIndex >= a.redeems.length)
+      ) {
         throw new TypeError('invalid redeem index');
       }
       a.redeems.forEach(redeem => {
@@ -307,7 +307,8 @@ export function p2tr(a: Payment, opts?: PaymentOpts): Payment {
       });
     }
 
-    const chosenRedeem = a.redeems && a.redeems[a.redeemIndex || 0];
+    const chosenRedeem =
+      a.redeems && a.redeemIndex !== undefined && a.redeems[a.redeemIndex];
 
     const parsedWitness = _parsedWitness();
     if (parsedWitness && parsedWitness.spendType === 'Key') {
