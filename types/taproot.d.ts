@@ -3,7 +3,7 @@
  * The 0x02 prefix indicating an even Y coordinate which is implicitly assumed
  * on all 32 byte x-only pub keys as defined in BIP340.
  */
-export declare const EVEN_Y_COORD_PREFIX: Uint8Array;
+export declare const EVEN_Y_COORD_PREFIX: Buffer;
 declare const TAGS: readonly ["TapLeaf", "TapBranch", "TapTweak", "KeyAgg list", "KeyAgg coefficient", "TapSighash"];
 declare type TaggedHashPrefix = typeof TAGS[number];
 /**

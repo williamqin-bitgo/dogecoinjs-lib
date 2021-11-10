@@ -15,8 +15,8 @@ const ecc = require('tiny-secp256k1');
  * The 0x02 prefix indicating an even Y coordinate which is implicitly assumed
  * on all 32 byte x-only pub keys as defined in BIP340.
  */
-exports.EVEN_Y_COORD_PREFIX = new Uint8Array([0x02]);
-const INITIAL_TAPSCRIPT_VERSION = new Uint8Array([0xc0]);
+exports.EVEN_Y_COORD_PREFIX = Buffer.of(0x02);
+const INITIAL_TAPSCRIPT_VERSION = Buffer.of(0xc0);
 const TAGS = [
   'TapLeaf',
   'TapBranch',
