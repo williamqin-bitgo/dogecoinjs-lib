@@ -108,6 +108,14 @@ export function equate(a: any, b: any, args?: any): void {
     );
   if ('data' in b)
     t.deepStrictEqual(tryHex(a.data), tryHex(b.data), 'Inequal *.data');
+  if ('controlBlock' in b)
+    t.strictEqual(
+      tryHex(a.controlBlock),
+      tryHex(b.controlBlock),
+      'Inequal control block',
+    );
+  if ('annex' in b)
+    t.strictEqual(tryHex(a.annex), tryHex(b.annex), 'Inequal annex');
 }
 
 export function preform(x: any): any {
@@ -130,6 +138,8 @@ export function preform(x: any): any {
   if (x.hash) x.hash = Buffer.from(x.hash, 'hex');
   if (x.pubkey) x.pubkey = Buffer.from(x.pubkey, 'hex');
   if (x.signature) x.signature = Buffer.from(x.signature, 'hex');
+  if (x.controlBlock) x.controlBlock = Buffer.from(x.controlBlock, 'hex');
+  if (x.annex) x.annex = Buffer.from(x.annex, 'hex');
   if (x.pubkeys) x.pubkeys = x.pubkeys.map(fromHex);
   if (x.signatures)
     x.signatures = x.signatures.map((y: any) => {

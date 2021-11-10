@@ -15,8 +15,8 @@ const ecc = require('tiny-secp256k1');
  * The 0x02 prefix indicating an even Y coordinate which is implicitly assumed
  * on all 32 byte x-only pub keys as defined in BIP340.
  */
-export const EVEN_Y_COORD_PREFIX = new Uint8Array([0x02]);
-const INITIAL_TAPSCRIPT_VERSION = new Uint8Array([0xc0]);
+export const EVEN_Y_COORD_PREFIX = Buffer.of(0x02);
+const INITIAL_TAPSCRIPT_VERSION = Buffer.of(0xc0);
 
 const TAGS = [
   'TapLeaf',
@@ -474,43 +474,4 @@ export function getTaptreeRoot(
   }
 
   return taptreeMerkleHash;
-}
-
-/**
- * Checks whether the tapscript and control block from a witness stack matches a 32 byte witness
- * program (aka taproot pubkey) by validating the merkle proof for its inclusion in the taptree.
- * @param scriptPathWitness an object representing a stack of script path witness elements
- * @param expectedTaprootPubkey the 32-byte array containing the witness program (the second
- * push in the scriptPubKey) which represents a public key according to BIP340 and which we
- * expect to match the taproot pubkey derived from the control block
- * @returns `true` if the tapscript matches the witness program, otherwise `false`
- * @throws if the witness stack does not conform to the BIP 341 script validation rules
- */
-export function isValidTapscript(
-  scriptPathWitness: ScriptPathWitness,
-  expectedTaprootPubkey: Buffer,
-): boolean {
-  const controlBlock = parseControlBlock(scriptPathWitness.controlBlock);
-  const { parity, internalPubkey } = controlBlock;
-
-  const taptreeRoot = getTaptreeRoot(controlBlock, scriptPathWitness.tapscript);
-
-  const tapTweak = taggedHash(
-    'TapTweak',
-    Buffer.concat([internalPubkey, taptreeRoot]),
-  );
-
-  // If t ≥ order of secp256k1, pointAddScalar call below will throw.
-  const taprootPubkey = ecc.pointAddScalar(
-    Buffer.concat([EVEN_Y_COORD_PREFIX, internalPubkey]),
-    tapTweak,
-  );
-
-  const taprootPubkeyParity =
-    taprootPubkey[0] === EVEN_Y_COORD_PREFIX[0] ? 0 : 1;
-
-  return (
-    Buffer.compare(expectedTaprootPubkey, taprootPubkey.slice(1)) === 0 &&
-    parity === taprootPubkeyParity
-  );
 }
