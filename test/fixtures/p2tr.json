@@ -49,6 +49,34 @@
           },
           {
             "output": "4d4b27ab455a6e2b03af29a141ef47fc579c8435f563c065bf0dd12e6180ccd4 OP_CHECKSIG",
+            "inputHex": "20deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+            "weight": 2
+          }
+        ],
+        "network": "regtest"
+      },
+      "options": { },
+      "expected": {
+        "name": "p2tr",
+        "output": "OP_1 7cdb1fd083166c9265493f105d93dd1e30b7a20208c495177bbb69f03e2168e9",
+        "address": "bcrt1p0nd3l5yrzekfye2f8ug9my7arcct0gszprzf29mmhd5lq03pdr5sm6n5zf"
+      }
+    },
+    {
+      "description": "p2tr, out (from scripts & key)",
+      "arguments": {
+        "pubkey": "af455f4989d122e9185f8c351dbaecd13adca3eef8a9d38ef8ffed6867e342e3",
+        "redeems": [
+          {
+            "output": "8f5173bc367914e1574aceb3c7232a178a764fb6f14730b6b20bd36394c6c717 OP_CHECKSIG",
+            "weight": 1
+          },
+          {
+            "output": "07c7c32d159a27ba1824798b3b1d11e1b85f4dbc9e9fe63d95440a30737496de OP_CHECKSIG",
+            "weight": 1
+          },
+          {
+            "output": "4d4b27ab455a6e2b03af29a141ef47fc579c8435f563c065bf0dd12e6180ccd4 OP_CHECKSIG",
             "witness": [ "deadbeef" ],
             "weight": 2
           }
@@ -188,6 +216,7 @@
         "controlBlock": "c150929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0",
         "annex": "50abcd",
         "output": "OP_1 3d3e6d002d642acf8653bcf26b81dbe656df5bf88b6d54221b2606bc78f3d4e6",
+        "redeemIndex": 0,
         "network": "testnet"
       },
       "options": {},
@@ -310,18 +339,6 @@
       "exception": "mismatch between output and taproot pubkey"
     },
     {
-      "description": "missing redeemIndex",
-      "arguments": {
-        "redeems": [
-          { "outputHex": "20dcd9a3fdad900e39ff367823f5d683135238d04425ac8dce19d0220e5791c700ac" },
-          { "outputHex": "204d4b27ab455a6e2b03af29a141ef47fc579c8435f563c065bf0dd12e6180ccd4ac" }
-        ],
-        "network": "testnet"
-      },
-      "options": {},
-      "exception": "No redeem index with > 1 redeem"
-    },
-    {
       "description": "negative redeemIndex",
       "arguments": {
         "redeemIndex": -1,
@@ -368,6 +385,7 @@
           "204d4b27ab455a6e2b03af29a141ef47fc579c8435f563c065bf0dd12e6180ccd4ac",
           "c050929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0"
         ],
+        "redeemIndex": 0,
         "network": "testnet"
       },
       "options": {},
