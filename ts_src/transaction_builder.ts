@@ -1463,10 +1463,7 @@ function trySign({
       if (hashType === Transaction.SIGHASH_DEFAULT) {
         input.signatures![i] = signature;
       } else {
-        input.signatures![i] = Buffer.concat([
-          signature,
-          new Uint8Array([hashType]),
-        ]);
+        input.signatures![i] = Buffer.concat([signature, Buffer.of(hashType)]);
       }
     } else {
       const signature = keyPair.sign(signatureHash, useLowR);

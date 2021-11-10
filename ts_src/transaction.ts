@@ -488,7 +488,7 @@ export class Transaction {
     // https://github.com/bitcoin/bips/blob/master/bip-0341.mediawiki#cite_note-19
     return taggedHash(
       'TapSighash',
-      Buffer.concat([new Uint8Array([0x00]), sigMsgWriter.end()]),
+      Buffer.concat([Buffer.of(0x00), sigMsgWriter.end()]),
     );
   }
 

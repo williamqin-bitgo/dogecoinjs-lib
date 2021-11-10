@@ -391,7 +391,7 @@ class Transaction {
     // https://github.com/bitcoin/bips/blob/master/bip-0341.mediawiki#cite_note-19
     return (0, taproot_1.taggedHash)(
       'TapSighash',
-      Buffer.concat([new Uint8Array([0x00]), sigMsgWriter.end()]),
+      Buffer.concat([Buffer.of(0x00), sigMsgWriter.end()]),
     );
   }
   hashForWitnessV0(inIndex, prevOutScript, value, hashType) {
