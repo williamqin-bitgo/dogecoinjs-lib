@@ -1339,6 +1339,7 @@ function getSigningData(
         inputs.map(({ value }) => value),
         hashType,
         leafHash,
+        annex,
       );
       break;
     default:
