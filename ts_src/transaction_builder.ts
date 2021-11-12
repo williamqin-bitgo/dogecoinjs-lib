@@ -1613,6 +1613,7 @@ function getSigningData(
         inputs.map(({ value }) => value as number),
         hashType,
         leafHash,
+        annex,
       );
       break;
     default:
