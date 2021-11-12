@@ -233,7 +233,7 @@ function getHuffmanTaptree(scripts, weights) {
 exports.getHuffmanTaptree = getHuffmanTaptree;
 function getControlBlock(parity, pubkey, path) {
   const parityVersion = INITIAL_TAPSCRIPT_VERSION[0] + parity;
-  return Buffer.concat([new Uint8Array([parityVersion]), pubkey, ...path]);
+  return Buffer.concat([Buffer.of(parityVersion), pubkey, ...path]);
 }
 exports.getControlBlock = getControlBlock;
 /**
@@ -339,7 +339,7 @@ function getTapleafHash(controlBlock, tapscript) {
   return taggedHash(
     'TapLeaf',
     Buffer.concat([
-      new Uint8Array([leafVersion]),
+      Buffer.of(leafVersion),
       serializeScriptSize(tapscript),
       tapscript,
     ]),
