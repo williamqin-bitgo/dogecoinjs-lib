@@ -290,7 +290,7 @@ export function getControlBlock(
 ): Buffer {
   const parityVersion = INITIAL_TAPSCRIPT_VERSION[0] + parity;
 
-  return Buffer.concat([new Uint8Array([parityVersion]), pubkey, ...path]);
+  return Buffer.concat([Buffer.of(parityVersion), pubkey, ...path]);
 }
 
 export interface KeyPathWitness {
@@ -431,7 +431,7 @@ export function getTapleafHash(
   return taggedHash(
     'TapLeaf',
     Buffer.concat([
-      new Uint8Array([leafVersion]),
+      Buffer.of(leafVersion),
       serializeScriptSize(tapscript),
       tapscript,
     ]),
