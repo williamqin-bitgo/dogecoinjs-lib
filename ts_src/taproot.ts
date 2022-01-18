@@ -74,13 +74,16 @@ export function aggregateMuSigPubkeys(pubkeys: Buffer[]): Buffer {
 
   const L = taggedHash('KeyAgg list', Buffer.concat(pubkeys));
 
-  const tweakedPubkeys: Buffer[] = pubkeys.map((pubkey, index) => {
+  const secondUniquePubkey = pubkeys.find(pubkey => !pubkeys[0].equals(pubkey));
+
+  const tweakedPubkeys: Buffer[] = pubkeys.map(pubkey => {
     const xyPubkey = Buffer.concat([EVEN_Y_COORD_PREFIX, pubkey]);
 
-    if (index === 1) {
-      // The second unique key in the pubkey list gets the constant KeyAgg
-      // coefficient 1 which saves an exponentiation. See the MuSig2*
-      // appendix in the MuSig2 paper for details.
+    if (secondUniquePubkey !== undefined && secondUniquePubkey.equals(pubkey)) {
+      // The second unique key in the pubkey list given to ''KeyAgg'' (as well
+      // as any keys identical to this key) gets the constant KeyAgg
+      // coefficient 1 which saves an exponentiation (see the MuSig2* appendix
+      // in the MuSig2 paper).
       return xyPubkey;
     }
 
