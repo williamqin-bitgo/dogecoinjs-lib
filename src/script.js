@@ -165,8 +165,8 @@ function isCanonicalPubKey(buffer) {
   return types.isPoint(buffer);
 }
 exports.isCanonicalPubKey = isCanonicalPubKey;
-function isDefinedHashType(hashType) {
-  const hashTypeMod = hashType & ~0x80;
+function isDefinedHashType(hashType, ignoreBits = 0xc0) {
+  const hashTypeMod = hashType & ~ignoreBits;
   // return hashTypeMod > SIGHASH_ALL && hashTypeMod < SIGHASH_SINGLE
   return hashTypeMod > 0x00 && hashTypeMod < 0x04;
 }
@@ -180,7 +180,7 @@ exports.isCanonicalScriptSignature = isCanonicalScriptSignature;
 function isCanonicalSchnorrSignature(buffer) {
   if (!Buffer.isBuffer(buffer)) return false;
   if (buffer.length === 64) return true; // implied SIGHASH_DEFAULT
-  if (buffer.length === 65 && isDefinedHashType(buffer[64])) return true; // explicit SIGHASH trailing byte
+  if (buffer.length === 65 && isDefinedHashType(buffer[64], 0x80)) return true; // explicit SIGHASH trailing byte
   return false;
 }
 exports.isCanonicalSchnorrSignature = isCanonicalSchnorrSignature;

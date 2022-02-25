@@ -194,8 +194,11 @@ export function isCanonicalPubKey(buffer: Buffer): boolean {
   return types.isPoint(buffer);
 }
 
-export function isDefinedHashType(hashType: number): boolean {
-  const hashTypeMod = hashType & ~0x80;
+export function isDefinedHashType(
+  hashType: number,
+  ignoreBits: number = 0xc0,
+): boolean {
+  const hashTypeMod = hashType & ~ignoreBits;
 
   // return hashTypeMod > SIGHASH_ALL && hashTypeMod < SIGHASH_SINGLE
   return hashTypeMod > 0x00 && hashTypeMod < 0x04;
@@ -211,7 +214,7 @@ export function isCanonicalScriptSignature(buffer: Buffer): boolean {
 export function isCanonicalSchnorrSignature(buffer: Buffer): boolean {
   if (!Buffer.isBuffer(buffer)) return false;
   if (buffer.length === 64) return true; // implied SIGHASH_DEFAULT
-  if (buffer.length === 65 && isDefinedHashType(buffer[64])) return true; // explicit SIGHASH trailing byte
+  if (buffer.length === 65 && isDefinedHashType(buffer[64], 0x80)) return true; // explicit SIGHASH trailing byte
   return false;
 }
 
