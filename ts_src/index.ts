@@ -3,8 +3,18 @@ import * as crypto from './crypto';
 import * as networks from './networks';
 import * as payments from './payments';
 import * as script from './script';
+import * as taproot from './taproot';
+import * as ScriptSignature from './script_signature';
 
-export { address, crypto, networks, payments, script };
+export {
+  ScriptSignature,
+  address,
+  crypto,
+  networks,
+  payments,
+  script,
+  taproot,
+};
 
 export { Block } from './block';
 export { TaggedHashPrefix } from './crypto';

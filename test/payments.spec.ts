@@ -1,11 +1,26 @@
 import * as assert from 'assert';
 import { describe, it } from 'mocha';
+import * as ecc from 'tiny-secp256k1';
 import { PaymentCreator } from '../src/payments';
+import { TinySecp256k1Interface } from '../src/types';
 import * as u from './payments.utils';
-['embed', 'p2ms', 'p2pk', 'p2pkh', 'p2sh', 'p2wpkh', 'p2wsh'].forEach(p => {
+[
+  'embed',
+  'p2ms',
+  'p2pk',
+  'p2pkh',
+  'p2sh',
+  'p2tr',
+  'p2tr_ns',
+  'p2wpkh',
+  'p2wsh',
+].forEach(p => {
   describe(p, () => {
     let fn: PaymentCreator;
     const payment = require('../src/payments/' + p);
+    const eccLib: TinySecp256k1Interface | undefined = p.startsWith('p2tr')
+      ? ecc
+      : undefined;
     if (p === 'embed') {
       fn = payment.p2data;
     } else {
@@ -16,7 +31,7 @@ import * as u from './payments.utils';
     fixtures.valid.forEach((f: any) => {
       it(f.description + ' as expected', () => {
         const args = u.preform(f.arguments);
-        const actual = fn(args, f.options);
+        const actual = fn(args, Object.assign({ eccLib }, f.options));
 
         u.equate(actual, f.expected, f.arguments);
       });
@@ -25,7 +40,7 @@ import * as u from './payments.utils';
         const args = u.preform(f.arguments);
         const actual = fn(
           args,
-          Object.assign({}, f.options, {
+          Object.assign({ eccLib }, f.options, {
             validate: false,
           }),
         );
@@ -41,7 +56,7 @@ import * as u from './payments.utils';
           const args = u.preform(f.arguments);
 
           assert.throws(() => {
-            fn(args, f.options);
+            fn(args, Object.assign({ eccLib }, f.options));
           }, new RegExp(f.exception));
         },
       );
