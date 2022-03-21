@@ -1,5 +1,7 @@
 /// <reference types="node" />
 export declare const typeforce: any;
+declare function isFieldElement(c: Buffer | number | undefined | null): boolean;
+export declare const isXOnlyPoint: typeof isFieldElement;
 export declare function isPoint(p: Buffer | number | undefined | null): boolean;
 export declare function UInt31(value: number): boolean;
 export declare function BIP32Path(value: string): boolean;
@@ -50,3 +52,4 @@ export declare const Function: any;
 export declare const BufferN: any;
 export declare const Null: any;
 export declare const oneOf: any;
+export {};

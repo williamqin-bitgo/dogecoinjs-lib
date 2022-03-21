@@ -8,22 +8,28 @@ const EC_P = NBuffer.from(
   'hex',
 );
 
+function isFieldElement(c: Buffer | number | undefined | null): boolean {
+  if (!NBuffer.isBuffer(c)) return false;
+  if (c.length !== 32) return false;
+  if (c.compare(ZERO32) === 0) return false;
+  if (c.compare(EC_P) >= 0) return false;
+  return true;
+}
+
+export const isXOnlyPoint = isFieldElement;
+
 export function isPoint(p: Buffer | number | undefined | null): boolean {
   if (!NBuffer.isBuffer(p)) return false;
   if (p.length < 33) return false;
 
   const t = p[0];
-  const x = p.slice(1, 33);
-  if (x.compare(ZERO32) === 0) return false;
-  if (x.compare(EC_P) >= 0) return false;
-  if ((t === 0x02 || t === 0x03) && p.length === 33) {
-    return true;
-  }
 
-  const y = p.slice(33);
-  if (y.compare(ZERO32) === 0) return false;
-  if (y.compare(EC_P) >= 0) return false;
+  if (!isFieldElement(p.slice(1, 33))) return false;
+  if ((t === 0x02 || t === 0x03) && p.length === 33) return true;
+
+  if (!isFieldElement(p.slice(33))) return false;
   if (t === 0x04 && p.length === 65) return true;
+
   return false;
 }
 

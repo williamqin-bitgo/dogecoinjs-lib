@@ -1,6 +1,6 @@
 'use strict';
 Object.defineProperty(exports, '__esModule', { value: true });
-exports.oneOf = exports.Null = exports.BufferN = exports.Function = exports.UInt32 = exports.UInt8 = exports.tuple = exports.maybe = exports.Hex = exports.Buffer = exports.String = exports.Boolean = exports.Array = exports.Number = exports.Hash256bit = exports.Hash160bit = exports.Buffer256bit = exports.isTaptree = exports.isTapleaf = exports.TAPLEAF_VERSION_MASK = exports.Network = exports.ECPoint = exports.Satoshi = exports.Signer = exports.BIP32Path = exports.UInt31 = exports.isPoint = exports.typeforce = void 0;
+exports.oneOf = exports.Null = exports.BufferN = exports.Function = exports.UInt32 = exports.UInt8 = exports.tuple = exports.maybe = exports.Hex = exports.Buffer = exports.String = exports.Boolean = exports.Array = exports.Number = exports.Hash256bit = exports.Hash160bit = exports.Buffer256bit = exports.isTaptree = exports.isTapleaf = exports.TAPLEAF_VERSION_MASK = exports.Network = exports.ECPoint = exports.Satoshi = exports.Signer = exports.BIP32Path = exports.UInt31 = exports.isPoint = exports.isXOnlyPoint = exports.typeforce = void 0;
 const buffer_1 = require('buffer');
 exports.typeforce = require('typeforce');
 const ZERO32 = buffer_1.Buffer.alloc(32, 0);
@@ -8,19 +8,21 @@ const EC_P = buffer_1.Buffer.from(
   'fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f',
   'hex',
 );
+function isFieldElement(c) {
+  if (!buffer_1.Buffer.isBuffer(c)) return false;
+  if (c.length !== 32) return false;
+  if (c.compare(ZERO32) === 0) return false;
+  if (c.compare(EC_P) >= 0) return false;
+  return true;
+}
+exports.isXOnlyPoint = isFieldElement;
 function isPoint(p) {
   if (!buffer_1.Buffer.isBuffer(p)) return false;
   if (p.length < 33) return false;
   const t = p[0];
-  const x = p.slice(1, 33);
-  if (x.compare(ZERO32) === 0) return false;
-  if (x.compare(EC_P) >= 0) return false;
-  if ((t === 0x02 || t === 0x03) && p.length === 33) {
-    return true;
-  }
-  const y = p.slice(33);
-  if (y.compare(ZERO32) === 0) return false;
-  if (y.compare(EC_P) >= 0) return false;
+  if (!isFieldElement(p.slice(1, 33))) return false;
+  if ((t === 0x02 || t === 0x03) && p.length === 33) return true;
+  if (!isFieldElement(p.slice(33))) return false;
   if (t === 0x04 && p.length === 65) return true;
   return false;
 }
