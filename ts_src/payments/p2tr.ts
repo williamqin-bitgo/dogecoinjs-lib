@@ -1,7 +1,11 @@
 import { Buffer as NBuffer } from 'buffer';
 import { bitcoin as BITCOIN_NETWORK } from '../networks';
 import * as bscript from '../script';
-import { typeforce as typef, TinySecp256k1Interface } from '../types';
+import {
+  isXOnlyPoint,
+  typeforce as typef,
+  TinySecp256k1Interface,
+} from '../types';
 import {
   toHashTree,
   rootHashFromPath,
@@ -215,8 +219,7 @@ export function p2tr(a: Payment, opts?: PaymentOpts): Payment {
     }
 
     if (pubkey && pubkey.length) {
-      if (!_ecc().isXOnlyPoint(pubkey))
-        throw new TypeError('Invalid pubkey for p2tr');
+      if (!isXOnlyPoint(pubkey)) throw new TypeError('Invalid pubkey for p2tr');
     }
 
     if (a.hash && a.scriptTree) {
@@ -280,7 +283,7 @@ export function p2tr(a: Payment, opts?: PaymentOpts): Payment {
         if (a.internalPubkey && !a.internalPubkey.equals(internalPubkey))
           throw new TypeError('Internal pubkey mismatch');
 
-        if (!_ecc().isXOnlyPoint(internalPubkey))
+        if (!isXOnlyPoint(internalPubkey))
           throw new TypeError('Invalid internalPubkey for p2tr witness');
 
         const leafVersion = controlBlock[0] & LEAF_VERSION_MASK;

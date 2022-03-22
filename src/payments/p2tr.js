@@ -196,7 +196,7 @@ function p2tr(a, opts) {
       else pubkey = tweakedKey.x;
     }
     if (pubkey && pubkey.length) {
-      if (!_ecc().isXOnlyPoint(pubkey))
+      if (!(0, types_1.isXOnlyPoint)(pubkey))
         throw new TypeError('Invalid pubkey for p2tr');
     }
     if (a.hash && a.scriptTree) {
@@ -251,7 +251,7 @@ function p2tr(a, opts) {
         const internalPubkey = controlBlock.slice(1, 33);
         if (a.internalPubkey && !a.internalPubkey.equals(internalPubkey))
           throw new TypeError('Internal pubkey mismatch');
-        if (!_ecc().isXOnlyPoint(internalPubkey))
+        if (!(0, types_1.isXOnlyPoint)(internalPubkey))
           throw new TypeError('Invalid internalPubkey for p2tr witness');
         const leafVersion = controlBlock[0] & LEAF_VERSION_MASK;
         const script = witness[witness.length - 2];

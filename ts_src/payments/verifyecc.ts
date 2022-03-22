@@ -3,38 +3,6 @@ import { TinySecp256k1Interface } from '../types';
 const h = (hex: string): Buffer => Buffer.from(hex, 'hex');
 
 export function verifyEcc(ecc: TinySecp256k1Interface): void {
-  assert(typeof ecc.isXOnlyPoint === 'function');
-  assert(
-    ecc.isXOnlyPoint(
-      h('79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798'),
-    ),
-  );
-  assert(
-    ecc.isXOnlyPoint(
-      h('fffffffffffffffffffffffffffffffffffffffffffffffffffffffeeffffc2e'),
-    ),
-  );
-  assert(
-    ecc.isXOnlyPoint(
-      h('f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9'),
-    ),
-  );
-  assert(
-    ecc.isXOnlyPoint(
-      h('0000000000000000000000000000000000000000000000000000000000000001'),
-    ),
-  );
-  assert(
-    !ecc.isXOnlyPoint(
-      h('0000000000000000000000000000000000000000000000000000000000000000'),
-    ),
-  );
-  assert(
-    !ecc.isXOnlyPoint(
-      h('fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f'),
-    ),
-  );
-
   assert(typeof ecc.xOnlyPointAddTweak === 'function');
   tweakAddVectors.forEach(t => {
     const r = ecc.xOnlyPointAddTweak(h(t.pubkey), h(t.tweak));
