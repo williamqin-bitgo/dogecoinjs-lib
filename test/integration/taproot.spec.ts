@@ -224,8 +224,8 @@ describe('bitcoinjs-lib (transaction with taproot)', () => {
     });
     psbt.addOutput({ value: sendAmount, address: address! });
 
-    psbt.signInput(0, leafKeys[1]);
     psbt.signInput(0, leafKeys[0]);
+    psbt.signInput(0, leafKeys[1]);
 
     const tapscriptFinalizer = buildTapscriptFinalizer(
       internalKey.publicKey,
@@ -344,9 +344,9 @@ describe('bitcoinjs-lib (transaction with taproot)', () => {
       leafPubkeys.push(toXOnly(leafKey.publicKey).toString('hex'));
     }
 
-    const leafScriptAsm = `${leafPubkeys[2]} OP_CHECKSIG ${
+    const leafScriptAsm = `${leafPubkeys[0]} OP_CHECKSIG ${
       leafPubkeys[1]
-    } OP_CHECKSIGADD ${leafPubkeys[0]} OP_CHECKSIGADD OP_3 OP_NUMEQUAL`;
+    } OP_CHECKSIGADD ${leafPubkeys[2]} OP_CHECKSIGADD OP_3 OP_NUMEQUAL`;
 
     const leafScript = bitcoin.script.fromASM(leafScriptAsm);
 

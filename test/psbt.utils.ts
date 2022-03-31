@@ -33,7 +33,20 @@ const buildTapscriptFinalizer = (
         redeem: { output: script },
         network,
       });
-      const sigs = (input.partialSig || []).map(ps => ps.signature) as Buffer[];
+      const stack = bitcoin.script.decompile(script);
+      if (!stack) throw new Error('Invalid script');
+      const pushes = stack.filter(chunk => Buffer.isBuffer(chunk)) as Buffer[];
+      const pkIdx = (pk: Buffer) => pushes.findIndex(chunk => pk.equals(chunk));
+      let sigs: Buffer[] = [];
+      if (input.partialSig) {
+        const pkIdxSigs = input.partialSig.map(ps => ({
+          idx: pkIdx(ps.pubkey),
+          sig: ps.signature,
+        }));
+        // Sigs need to be reverse script order
+        pkIdxSigs.sort((a, b) => a.idx - b.idx);
+        sigs = pkIdxSigs.map(({ sig }) => sig);
+      }
       const finalScriptWitness = sigs.concat(
         tapscriptSpend.witness as Buffer[],
       );
