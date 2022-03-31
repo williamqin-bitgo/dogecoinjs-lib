@@ -208,6 +208,13 @@ export function isCanonicalScriptSignature(buffer: Buffer): boolean {
   return bip66.check(buffer.slice(0, -1));
 }
 
+export function isCanonicalSchnorrSignature(buffer: Buffer): boolean {
+  if (!Buffer.isBuffer(buffer)) return false;
+  if (buffer.length === 64) return true; // implied SIGHASH_DEFAULT
+  if (buffer.length === 65 && isDefinedHashType(buffer[64])) return true; // explicit SIGHASH trailing byte
+  return false;
+}
+
 // tslint:disable-next-line variable-name
 export const number = scriptNumber;
 export const signature = scriptSignature;
