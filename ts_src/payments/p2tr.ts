@@ -101,7 +101,10 @@ export function p2tr(a: Payment, opts?: PaymentOpts): Payment {
       const controlBlock = w[w.length - 1];
       const leafVersion = controlBlock[0] & TAPLEAF_VERSION_MASK;
       const script = w[w.length - 2];
-      const leafHash = tapleafHash({ output: script, version: leafVersion });
+      const leafHash = tapleafHash({
+        output: script,
+        redeemVersion: leafVersion,
+      });
       return rootHashFromPath(controlBlock, leafHash);
     }
     return null;
@@ -159,7 +162,7 @@ export function p2tr(a: Payment, opts?: PaymentOpts): Payment {
     if (hashTree && a.redeem && a.redeem.output && a.internalPubkey) {
       const leafHash = tapleafHash({
         output: a.redeem.output,
-        version: o.redeemVersion,
+        redeemVersion: o.redeemVersion,
       });
       const path = findScriptPath(hashTree, leafHash);
       if (!path) return;
@@ -228,7 +231,7 @@ export function p2tr(a: Payment, opts?: PaymentOpts): Payment {
     if (a.redeem && a.redeem.output && hashTree) {
       const leafHash = tapleafHash({
         output: a.redeem.output,
-        version: o.redeemVersion,
+        redeemVersion: o.redeemVersion,
       });
       if (!findScriptPath(hashTree, leafHash))
         throw new TypeError('Redeem script not in tree');
@@ -296,7 +299,10 @@ export function p2tr(a: Payment, opts?: PaymentOpts): Payment {
         const leafVersion = controlBlock[0] & TAPLEAF_VERSION_MASK;
         const script = witness[witness.length - 2];
 
-        const leafHash = tapleafHash({ output: script, version: leafVersion });
+        const leafHash = tapleafHash({
+          output: script,
+          redeemVersion: leafVersion,
+        });
         const hash = rootHashFromPath(controlBlock, leafHash);
 
         const outputKey = tweakKey(internalPubkey, hash);

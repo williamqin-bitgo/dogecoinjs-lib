@@ -74,15 +74,15 @@ export interface XOnlyPointAddTweakResult {
 
 export interface Tapleaf {
   output: Buffer;
-  version?: number;
+  redeemVersion?: number;
 }
 
 export const TAPLEAF_VERSION_MASK = 0xfe;
 export function isTapleaf(o: any): o is Tapleaf {
   if (!('output' in o)) return false;
   if (!NBuffer.isBuffer(o.output)) return false;
-  if (o.version !== undefined)
-    return (o.version & TAPLEAF_VERSION_MASK) === o.version;
+  if (o.redeemVersion !== undefined)
+    return (o.redeemVersion & TAPLEAF_VERSION_MASK) === o.redeemVersion;
   return true;
 }
 
@@ -91,7 +91,7 @@ export function isTapleaf(o: any): o is Tapleaf {
  * Each node is either a single Tapleaf, or a pair of Tapleaf | Taptree.
  * The tree has no balancing requirements.
  */
-export type Taptree = [Taptree | Tapleaf, Taptree | Tapleaf] | Tapleaf;
+export type Taptree = [Taptree, Taptree] | Tapleaf;
 
 export function isTaptree(scriptTree: any): scriptTree is Taptree {
   if (!Array(scriptTree)) return isTapleaf(scriptTree);

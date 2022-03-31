@@ -91,7 +91,7 @@ function p2tr(a, opts) {
       const script = w[w.length - 2];
       const leafHash = (0, taprootutils_1.tapleafHash)({
         output: script,
-        version: leafVersion,
+        redeemVersion: leafVersion,
       });
       return (0, taprootutils_1.rootHashFromPath)(controlBlock, leafHash);
     }
@@ -148,7 +148,7 @@ function p2tr(a, opts) {
     if (hashTree && a.redeem && a.redeem.output && a.internalPubkey) {
       const leafHash = (0, taprootutils_1.tapleafHash)({
         output: a.redeem.output,
-        version: o.redeemVersion,
+        redeemVersion: o.redeemVersion,
       });
       const path = (0, taprootutils_1.findScriptPath)(hashTree, leafHash);
       if (!path) return;
@@ -209,7 +209,7 @@ function p2tr(a, opts) {
     if (a.redeem && a.redeem.output && hashTree) {
       const leafHash = (0, taprootutils_1.tapleafHash)({
         output: a.redeem.output,
-        version: o.redeemVersion,
+        redeemVersion: o.redeemVersion,
       });
       if (!(0, taprootutils_1.findScriptPath)(hashTree, leafHash))
         throw new TypeError('Redeem script not in tree');
@@ -268,7 +268,7 @@ function p2tr(a, opts) {
         const script = witness[witness.length - 2];
         const leafHash = (0, taprootutils_1.tapleafHash)({
           output: script,
-          version: leafVersion,
+          redeemVersion: leafVersion,
         });
         const hash = (0, taprootutils_1.rootHashFromPath)(
           controlBlock,

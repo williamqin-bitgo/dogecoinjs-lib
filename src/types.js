@@ -72,8 +72,8 @@ exports.TAPLEAF_VERSION_MASK = 0xfe;
 function isTapleaf(o) {
   if (!('output' in o)) return false;
   if (!buffer_1.Buffer.isBuffer(o.output)) return false;
-  if (o.version !== undefined)
-    return (o.version & exports.TAPLEAF_VERSION_MASK) === o.version;
+  if (o.redeemVersion !== undefined)
+    return (o.redeemVersion & exports.TAPLEAF_VERSION_MASK) === o.redeemVersion;
   return true;
 }
 exports.isTapleaf = isTapleaf;

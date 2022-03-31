@@ -59,7 +59,7 @@ function findScriptPath(node, hash) {
 }
 exports.findScriptPath = findScriptPath;
 function tapleafHash(leaf) {
-  const version = leaf.version || exports.LEAF_VERSION_TAPSCRIPT;
+  const version = leaf.redeemVersion || exports.LEAF_VERSION_TAPSCRIPT;
   return bcrypto.taggedHash(
     'TapLeaf',
     buffer_1.Buffer.concat([

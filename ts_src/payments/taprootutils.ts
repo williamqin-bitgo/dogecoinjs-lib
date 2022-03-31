@@ -90,7 +90,7 @@ export function findScriptPath(
 }
 
 export function tapleafHash(leaf: Tapleaf): Buffer {
-  const version = leaf.version || LEAF_VERSION_TAPSCRIPT;
+  const version = leaf.redeemVersion || LEAF_VERSION_TAPSCRIPT;
   return bcrypto.taggedHash(
     'TapLeaf',
     NBuffer.concat([NBuffer.from([version]), serializeScript(leaf.output)]),
