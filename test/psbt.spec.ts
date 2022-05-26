@@ -23,13 +23,13 @@ const validator = (
   pubkey: Buffer,
   msghash: Buffer,
   signature: Buffer,
-): boolean => ECPair.fromPublicKey(pubkey).verify(msghash, signature);
-
-const schnorrValidator = (
-  pubkey: Buffer,
-  msghash: Buffer,
-  signature: Buffer,
-): boolean => ecc.verifySchnorr(msghash, pubkey, signature);
+): boolean => {
+  if (pubkey.length === 32) {
+    return ecc.verifySchnorr(msghash, pubkey, signature);
+  } else {
+    return ECPair.fromPublicKey(pubkey).verify(msghash, signature);
+  }
+};
 
 const initBuffers = (object: any): typeof preFixtures =>
   JSON.parse(JSON.stringify(object), (_, value) => {
@@ -1051,7 +1051,7 @@ describe(`Psbt`, () => {
       initEccLib(ecc);
       const psbt = Psbt.fromBase64(f.psbt);
       assert.strictEqual(
-        psbt.validateSignaturesOfInput(f.index, schnorrValidator),
+        psbt.validateSignaturesOfInput(f.index, validator),
         true,
       );
     });
@@ -1060,17 +1060,13 @@ describe(`Psbt`, () => {
       initEccLib(ecc);
       const psbt = Psbt.fromBase64(f.psbt);
       assert.strictEqual(
-        psbt.validateSignaturesOfInput(
-          f.index,
-          schnorrValidator,
-          f.pubkey as any,
-        ),
+        psbt.validateSignaturesOfInput(f.index, validator, f.pubkey as any),
         true,
       );
       assert.throws(() => {
         psbt.validateSignaturesOfInput(
           f.index,
-          schnorrValidator,
+          validator,
           f.incorrectPubkey as any,
         );
       }, new RegExp('No signatures for this pubkey'));
@@ -1083,7 +1079,7 @@ describe(`Psbt`, () => {
       initEccLib(ecc);
       const psbt = Psbt.fromBase64(f.psbt);
       assert.strictEqual(
-        psbt.validateSignaturesOfInput(f.index, schnorrValidator),
+        psbt.validateSignaturesOfInput(f.index, validator),
         true,
       );
     });
@@ -1092,17 +1088,13 @@ describe(`Psbt`, () => {
       initEccLib(ecc);
       const psbt = Psbt.fromBase64(f.psbt);
       assert.strictEqual(
-        psbt.validateSignaturesOfInput(
-          f.index,
-          schnorrValidator,
-          f.pubkey as any,
-        ),
+        psbt.validateSignaturesOfInput(f.index, validator, f.pubkey as any),
         true,
       );
       assert.throws(() => {
         psbt.validateSignaturesOfInput(
           f.index,
-          schnorrValidator,
+          validator,
           f.incorrectPubkey as any,
         );
       }, new RegExp('No signatures for this pubkey'));
