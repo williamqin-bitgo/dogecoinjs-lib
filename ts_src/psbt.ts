@@ -1049,7 +1049,7 @@ export class Psbt {
       inputIndex,
       input,
       this.data.inputs,
-      keyPair.publicKey,
+      toXOnly(keyPair.publicKey),
       this.__CACHE,
       tapLeafHashToSign,
       allowedSighashTypes,
@@ -1745,7 +1745,7 @@ function getTaprootHashesForSig(
   const hashes = [];
   if (input.tapInternalKey && !tapLeafHashToSign) {
     const outputKey = tweakInternalPubKey(inputIndex, input);
-    if (toXOnly(pubkey).equals(outputKey)) {
+    if (pubkey.equals(outputKey)) {
       const tapKeyHash = unsignedTx.hashForWitnessV1(
         inputIndex,
         signingScripts,

@@ -837,7 +837,7 @@ class Psbt {
       inputIndex,
       input,
       this.data.inputs,
-      keyPair.publicKey,
+      (0, bip371_1.toXOnly)(keyPair.publicKey),
       this.__CACHE,
       tapLeafHashToSign,
       allowedSighashTypes,
@@ -1312,7 +1312,7 @@ function getTaprootHashesForSig(
   const hashes = [];
   if (input.tapInternalKey && !tapLeafHashToSign) {
     const outputKey = (0, bip371_1.tweakInternalPubKey)(inputIndex, input);
-    if ((0, bip371_1.toXOnly)(pubkey).equals(outputKey)) {
+    if (pubkey.equals(outputKey)) {
       const tapKeyHash = unsignedTx.hashForWitnessV1(
         inputIndex,
         signingScripts,

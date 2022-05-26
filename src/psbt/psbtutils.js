@@ -47,17 +47,13 @@ function witnessStackToScriptWitness(witness) {
 }
 exports.witnessStackToScriptWitness = witnessStackToScriptWitness;
 function pubkeyPositionInScript(pubkey, script) {
-  const pubkeyHash = (0, crypto_1.hash160)(pubkey);
-  const pubkeyXOnly = pubkey.slice(1, 33); // slice before calling?
+  const checkBufs = [pubkey];
+  if (pubkey.length !== 32) checkBufs.push((0, crypto_1.hash160)(pubkey));
   const decompiled = bscript.decompile(script);
   if (decompiled === null) throw new Error('Unknown script error');
   return decompiled.findIndex(element => {
     if (typeof element === 'number') return false;
-    return (
-      element.equals(pubkey) ||
-      element.equals(pubkeyHash) ||
-      element.equals(pubkeyXOnly)
-    );
+    return checkBufs.some(buf => element.equals(buf));
   });
 }
 exports.pubkeyPositionInScript = pubkeyPositionInScript;
