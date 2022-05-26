@@ -1966,6 +1966,9 @@ function sighashTypeToString(sighashType: number): string {
       : '';
   const sigMod = sighashType & 0x1f;
   switch (sigMod) {
+    case Transaction.SIGHASH_DEFAULT:
+      text += 'SIGHASH_DEFAULT';
+      break;
     case Transaction.SIGHASH_ALL:
       text += 'SIGHASH_ALL';
       break;

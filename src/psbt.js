@@ -1497,6 +1497,9 @@ function sighashTypeToString(sighashType) {
       : '';
   const sigMod = sighashType & 0x1f;
   switch (sigMod) {
+    case transaction_1.Transaction.SIGHASH_DEFAULT:
+      text += 'SIGHASH_DEFAULT';
+      break;
     case transaction_1.Transaction.SIGHASH_ALL:
       text += 'SIGHASH_ALL';
       break;
