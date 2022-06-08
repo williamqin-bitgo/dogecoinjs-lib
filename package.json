@@ -1,5 +1,5 @@
 {
-  "name": "@bitgo/bitcoinjs-lib",
+  "name": "@williamqin-bitgo/dogecoinjs-lib",
   "version": "6.1.0-rc.3",
   "description": "Client-side Bitcoin JavaScript library",
   "main": "./src/index.js",
