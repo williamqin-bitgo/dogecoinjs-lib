@@ -1,8 +1,16 @@
 import * as assert from 'assert';
+import BigNumber from 'bignumber.js';
+import * as fs from 'fs';
+import * as JSONBig from 'json-bigint';
 import { beforeEach, describe, it } from 'mocha';
+import * as path from 'path';
 import { Transaction } from '..';
 import * as bscript from '../src/script';
-import * as fixtures from './fixtures/transaction.json';
+
+const rawFixture = fs.readFileSync(
+  path.resolve(__dirname, `./fixtures/transaction.json`),
+);
+const fixtures = JSONBig.parse(rawFixture.toString());
 
 describe('Transaction', () => {
   function fromRaw(raw: any, noWitness?: boolean): Transaction {
@@ -40,7 +48,7 @@ describe('Transaction', () => {
         script = bscript.fromASM(txOut.script);
       }
 
-      tx.addOutput(script!, txOut.value);
+      tx.addOutput(script!, new BigNumber(txOut.value));
     });
 
     return tx;
@@ -70,7 +78,7 @@ describe('Transaction', () => {
     fixtures.hashForSignature.forEach(importExport);
     fixtures.hashForWitnessV0.forEach(importExport);
 
-    fixtures.invalid.fromBuffer.forEach(f => {
+    fixtures.invalid.fromBuffer.forEach((f: any) => {
       it('throws on ' + f.exception, () => {
         assert.throws(() => {
           Transaction.fromHex(f.hex);
@@ -87,7 +95,7 @@ describe('Transaction', () => {
   });
 
   describe('toBuffer/toHex', () => {
-    fixtures.valid.forEach(f => {
+    fixtures.valid.forEach((f: any) => {
       it('exports ' + f.description + ' (' + f.id + ')', () => {
         const actual = fromRaw(f.raw, true);
         assert.strictEqual(actual.toHex(), f.hex);
@@ -121,7 +129,7 @@ describe('Transaction', () => {
   });
 
   describe('hasWitnesses', () => {
-    fixtures.valid.forEach(f => {
+    fixtures.valid.forEach((f: any) => {
       it(
         'detects if the transaction has witnesses: ' +
           (f.whex ? 'true' : 'false'),
@@ -137,7 +145,7 @@ describe('Transaction', () => {
 
   describe('weight/virtualSize', () => {
     it('computes virtual size', () => {
-      fixtures.valid.forEach(f => {
+      fixtures.valid.forEach((f: any) => {
         const transaction = Transaction.fromHex(f.whex ? f.whex : f.hex);
 
         assert.strictEqual(transaction.virtualSize(), f.virtualSize);
@@ -145,7 +153,7 @@ describe('Transaction', () => {
     });
 
     it('computes weight', () => {
-      fixtures.valid.forEach(f => {
+      fixtures.valid.forEach((f: any) => {
         const transaction = Transaction.fromHex(f.whex ? f.whex : f.hex);
 
         assert.strictEqual(transaction.weight(), f.weight);
@@ -177,7 +185,7 @@ describe('Transaction', () => {
       assert.strictEqual(tx.ins[0].sequence, 0xffffffff);
     });
 
-    fixtures.invalid.addInput.forEach(f => {
+    fixtures.invalid.addInput.forEach((f: any) => {
       it('throws on ' + f.exception, () => {
         const tx = new Transaction();
         const hash = Buffer.from(f.hash, 'hex');
@@ -192,13 +200,13 @@ describe('Transaction', () => {
   describe('addOutput', () => {
     it('returns an index', () => {
       const tx = new Transaction();
-      assert.strictEqual(tx.addOutput(Buffer.alloc(0), 0), 0);
-      assert.strictEqual(tx.addOutput(Buffer.alloc(0), 0), 1);
+      assert.strictEqual(tx.addOutput(Buffer.alloc(0), new BigNumber(0)), 0);
+      assert.strictEqual(tx.addOutput(Buffer.alloc(0), new BigNumber(0)), 1);
     });
   });
 
   describe('clone', () => {
-    fixtures.valid.forEach(f => {
+    fixtures.valid.forEach((f: any) => {
       let actual: Transaction;
       let expected: Transaction;
 
@@ -263,7 +271,7 @@ describe('Transaction', () => {
         ),
         0,
       );
-      tx.addOutput(randScript, 5000000000);
+      tx.addOutput(randScript, new BigNumber(5000000000));
 
       const original = (tx as any).__toBuffer;
       (tx as any).__toBuffer = function(
@@ -287,7 +295,7 @@ describe('Transaction', () => {
       });
     });
 
-    fixtures.hashForSignature.forEach(f => {
+    fixtures.hashForSignature.forEach((f: any) => {
       it(
         'should return ' +
           f.hash +
@@ -307,7 +315,7 @@ describe('Transaction', () => {
   });
 
   describe('hashForWitnessV0', () => {
-    fixtures.hashForWitnessV0.forEach(f => {
+    fixtures.hashForWitnessV0.forEach((f: any) => {
       it(
         'should return ' +
           f.hash +
@@ -319,7 +327,12 @@ describe('Transaction', () => {
 
           assert.strictEqual(
             tx
-              .hashForWitnessV0(f.inIndex, script, f.value, f.type)
+              .hashForWitnessV0(
+                f.inIndex,
+                script,
+                new BigNumber(f.value),
+                f.type,
+              )
               .toString('hex'),
             f.hash,
           );
@@ -329,14 +342,18 @@ describe('Transaction', () => {
   });
 
   describe('taprootSigning', () => {
-    fixtures.taprootSigning.forEach(f => {
+    fixtures.taprootSigning.forEach((f: any) => {
       const tx = Transaction.fromHex(f.txHex);
-      const prevOutScripts = f.utxos.map(({ scriptHex }) =>
-        Buffer.from(scriptHex, 'hex'),
+      const prevOutScripts = f.utxos.map(
+        ({ scriptHex }: { scriptHex: string; value: number }) =>
+          Buffer.from(scriptHex, 'hex'),
       );
-      const values = f.utxos.map(({ value }) => value);
+      const values = f.utxos.map(
+        ({ value }: { scriptHex: string; value: number }) =>
+          new BigNumber(value),
+      );
 
-      f.cases.forEach(c => {
+      f.cases.forEach((c: { hash: any; vin: any; typeHex: string }) => {
         let hash: Buffer;
 
         it(`should hash to ${c.hash} for ${f.description}:${c.vin}`, () => {

@@ -1,4 +1,5 @@
 import * as assert from 'assert';
+import BigNumber from 'bignumber.js';
 import { PsbtInput } from 'bip174/src/lib/interfaces';
 import { before, describe, it } from 'mocha';
 import * as bitcoin from '../..';
@@ -190,7 +191,10 @@ describe('bitcoinjs-lib (transactions w/ CSV)', () => {
       const tx = new bitcoin.Transaction();
       tx.version = 2;
       tx.addInput(idToHash(unspent.txId), unspent.vout, sequence);
-      tx.addOutput(toOutputScript(regtestUtils.RANDOM_ADDRESS), 1e4);
+      tx.addOutput(
+        toOutputScript(regtestUtils.RANDOM_ADDRESS),
+        new BigNumber('1e+4'),
+      );
 
       // {Alice's signature} OP_TRUE
       const signatureHash = tx.hashForSignature(
@@ -252,7 +256,10 @@ describe('bitcoinjs-lib (transactions w/ CSV)', () => {
       const tx = new bitcoin.Transaction();
       tx.version = 2;
       tx.addInput(idToHash(unspent.txId), unspent.vout);
-      tx.addOutput(toOutputScript(regtestUtils.RANDOM_ADDRESS), 7e4);
+      tx.addOutput(
+        toOutputScript(regtestUtils.RANDOM_ADDRESS),
+        new BigNumber('7e+4'),
+      );
 
       // OP_0 {Bob sig} {Charles sig} OP_TRUE OP_TRUE
       const signatureHash = tx.hashForSignature(
@@ -319,7 +326,10 @@ describe('bitcoinjs-lib (transactions w/ CSV)', () => {
       const tx = new bitcoin.Transaction();
       tx.version = 2;
       tx.addInput(idToHash(unspent.txId), unspent.vout, sequence1); // Set sequence1 for input
-      tx.addOutput(toOutputScript(regtestUtils.RANDOM_ADDRESS), 7e4);
+      tx.addOutput(
+        toOutputScript(regtestUtils.RANDOM_ADDRESS),
+        new BigNumber('7e+4'),
+      );
 
       // OP_0 {Bob sig} {Alice mediator sig} OP_FALSE OP_TRUE
       const signatureHash = tx.hashForSignature(
@@ -389,7 +399,10 @@ describe('bitcoinjs-lib (transactions w/ CSV)', () => {
       const tx = new bitcoin.Transaction();
       tx.version = 2;
       tx.addInput(idToHash(unspent.txId), unspent.vout, sequence2); // Set sequence2 for input
-      tx.addOutput(toOutputScript(regtestUtils.RANDOM_ADDRESS), 7e4);
+      tx.addOutput(
+        toOutputScript(regtestUtils.RANDOM_ADDRESS),
+        new BigNumber('7e+4'),
+      );
 
       // {Alice mediator sig} OP_FALSE
       const signatureHash = tx.hashForSignature(

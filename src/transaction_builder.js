@@ -1,6 +1,7 @@
 'use strict';
 Object.defineProperty(exports, '__esModule', { value: true });
 exports.TransactionBuilder = void 0;
+const bignumber_js_1 = require('bignumber.js');
 const baddress = require('./address');
 const bufferutils_1 = require('./bufferutils');
 const classify = require('./classify');
@@ -314,13 +315,19 @@ class TransactionBuilder {
   }
   __overMaximumFees(bytes) {
     // not all inputs will have .value defined
-    const incoming = this.__INPUTS.reduce((a, x) => a + (x.value >>> 0), 0);
+    const incoming = this.__INPUTS.reduce(
+      (a, x) => a.plus(x.value ? x.value : 0),
+      new bignumber_js_1.default(0),
+    );
     // but all outputs do, and if we have any input value
     // we can immediately determine if the outputs are too small
-    const outgoing = this.__TX.outs.reduce((a, x) => a + x.value, 0);
-    const fee = incoming - outgoing;
-    const feeRate = fee / bytes;
-    return feeRate > this.maximumFeeRate;
+    const outgoing = this.__TX.outs.reduce(
+      (a, x) => a.plus(x.value),
+      new bignumber_js_1.default(0),
+    );
+    const fee = incoming.minus(outgoing);
+    const feeRate = fee.dividedBy(bytes);
+    return feeRate.gt(this.maximumFeeRate);
   }
 }
 exports.TransactionBuilder = TransactionBuilder;
@@ -1111,12 +1118,12 @@ function checkSignArgs(inputs, signParams) {
       tfMessage(
         typeforce.Buffer,
         signParams.redeemScript,
-        `${posType} requires witnessScript`,
+        `${posType} requires redeemScript`,
       );
       tfMessage(
         types.Satoshi,
         signParams.witnessValue,
-        `${posType} requires witnessScript`,
+        `${posType} requires witnessValue`,
       );
       break;
     case 'p2tr':
@@ -1282,7 +1289,7 @@ function getSigningData(
     keyPair.publicKey || (keyPair.getPublicKey && keyPair.getPublicKey());
   if (!canSign(input)) {
     if (witnessValue !== undefined) {
-      if (input.value !== undefined && input.value !== witnessValue)
+      if (input.value !== undefined && !input.value.eq(witnessValue))
         throw new Error('Input did not match witnessValue');
       typeforce(types.Satoshi, witnessValue);
       input.value = witnessValue;

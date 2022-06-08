@@ -1,3 +1,4 @@
+import BigNumber from 'bignumber.js';
 import { Psbt as PsbtBase } from 'bip174';
 import * as varuint from 'bip174/src/lib/converter/varint';
 import {
@@ -188,7 +189,7 @@ export class Psbt {
       } catch (_) {}
       return {
         script: cloneBuffer(output.script),
-        value: output.value,
+        value: output.value.toNumber(),
         address,
       };
     });
@@ -860,7 +861,7 @@ class PsbtTransaction implements ITransaction {
     ) {
       throw new Error('Error adding output.');
     }
-    this.tx.addOutput(output.script, output.value);
+    this.tx.addOutput(output.script, new BigNumber(output.value));
   }
 
   toBuffer(): Buffer {
@@ -1260,7 +1261,10 @@ function getHashForSig(
     const prevoutIndex = unsignedTx.ins[inputIndex].index;
     prevout = nonWitnessUtxoTx.outs[prevoutIndex] as Output;
   } else if (input.witnessUtxo) {
-    prevout = input.witnessUtxo;
+    prevout = {
+      script: input.witnessUtxo.script,
+      value: new BigNumber(input.witnessUtxo.value),
+    };
   } else {
     throw new Error('Need a Utxo input item for signing');
   }
@@ -1601,11 +1605,11 @@ function inputFinalizeGetAmts(
       const nwTx = nonWitnessUtxoTxFromCache(cache, input, idx);
       const vout = tx.ins[idx].index;
       const out = nwTx.outs[vout] as Output;
-      inputAmount += out.value;
+      inputAmount += out.value.toNumber();
     }
   });
   const outputAmount = (tx.outs as Output[]).reduce(
-    (total, o) => total + o.value,
+    (total, o) => total + o.value.toNumber(),
     0,
   );
   const fee = inputAmount - outputAmount;
