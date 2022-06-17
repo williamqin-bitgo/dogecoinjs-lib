@@ -1,37 +1,47 @@
+import BigNumber from 'bignumber.js';
 import * as types from './types';
 
 const typeforce = require('typeforce');
 const varuint = require('varuint-bitcoin');
 
 // https://github.com/feross/buffer/blob/master/index.js#L1127
-function verifuint(value: number, max: number): void {
-  if (typeof value !== 'number')
-    throw new Error('cannot write a non-number as a number');
-  if (value < 0)
+function verifuint(value: BigNumber, max: BigNumber): void {
+  if (!BigNumber.isBigNumber(value))
+    throw new Error('cannot write a non-bignumber as a number');
+  if (value.lt(0))
     throw new Error('specified a negative value for writing an unsigned value');
-  if (value > max) throw new Error('RangeError: value out of range');
-  if (Math.floor(value) !== value)
-    throw new Error('value has a fractional component');
+  if (value.gt(max)) throw new Error('RangeError: value out of range');
+  if (!value.isInteger()) throw new Error('value has a fractional component');
 }
 
-export function readUInt64LE(buffer: Buffer, offset: number): number {
+export function readUInt64LE(buffer: Buffer, offset: number): BigNumber {
   const a = buffer.readUInt32LE(offset);
-  let b = buffer.readUInt32LE(offset + 4);
-  b *= 0x100000000;
+  const b = buffer.readUInt32LE(offset + 4);
+  let bigB = new BigNumber(b);
+  bigB = bigB.multipliedBy('0x100000000');
+  bigB = bigB.plus(a);
 
-  verifuint(b + a, 0x001fffffffffffff);
-  return b + a;
+  verifuint(bigB, new BigNumber('0xffffffffffffffff'));
+  return bigB;
 }
 
 export function writeUInt64LE(
   buffer: Buffer,
-  value: number,
+  value: BigNumber,
   offset: number,
 ): number {
-  verifuint(value, 0x001fffffffffffff);
+  verifuint(value, new BigNumber('0xffffffffffffffff'));
 
-  buffer.writeInt32LE(value & -1, offset);
-  buffer.writeUInt32LE(Math.floor(value / 0x100000000), offset + 4);
+  // Little endian - write 32 least significant bits first
+  buffer.writeUInt32LE(value.mod('0x100000000').toNumber(), offset);
+  // Now write 32 most significant bits
+  buffer.writeUInt32LE(
+    value
+      .dividedToIntegerBy('0x100000000')
+      .mod('0x100000000')
+      .toNumber(),
+    offset + 4,
+  );
   return offset + 8;
 }
 
@@ -78,7 +88,8 @@ export class BufferWriter {
     this.offset = this.buffer.writeUInt32LE(i, this.offset);
   }
 
-  writeUInt64(i: number): void {
+  // UInt64 requires bignumber as js number has max size UInt53
+  writeUInt64(i: BigNumber): void {
     this.offset = writeUInt64LE(this.buffer, i, this.offset);
   }
 
@@ -138,7 +149,8 @@ export class BufferReader {
     return result;
   }
 
-  readUInt64(): number {
+  // UInt64 requires bignumber as js number has max size UInt53
+  readUInt64(): BigNumber {
     const result = readUInt64LE(this.buffer, this.offset);
     this.offset += 8;
     return result;

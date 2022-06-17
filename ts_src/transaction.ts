@@ -1,3 +1,4 @@
+import BigNumber from 'bignumber.js';
 import { BufferReader, BufferWriter, reverseBuffer } from './bufferutils';
 import * as bcrypto from './crypto';
 import * as bscript from './script';
@@ -47,7 +48,7 @@ function isOutput(out: Output): boolean {
 
 export interface Output {
   script: Buffer;
-  value: number;
+  value: BigNumber;
 }
 
 export interface Input {
@@ -182,7 +183,7 @@ export class Transaction {
     );
   }
 
-  addOutput(scriptPubKey: Buffer, value: number): number {
+  addOutput(scriptPubKey: Buffer, value: BigNumber): number {
     typeforce(types.tuple(types.Buffer, types.Satoshi), arguments);
 
     // Add the output and return the output's index
@@ -343,7 +344,7 @@ export class Transaction {
   hashForWitnessV1(
     inIndex: number,
     prevOutScripts: Buffer[],
-    values: number[],
+    values: BigNumber[],
     hashType: number,
     leafHash?: Buffer,
     annex?: Buffer,
@@ -495,7 +496,7 @@ export class Transaction {
   hashForWitnessV0(
     inIndex: number,
     prevOutScript: Buffer,
-    value: number,
+    value: BigNumber,
     hashType: number,
   ): Buffer {
     typeforce(

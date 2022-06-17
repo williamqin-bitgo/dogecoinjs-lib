@@ -1,3 +1,5 @@
+import BigNumber from 'bignumber.js';
+
 const typeforce = require('typeforce');
 
 const UINT31_MAX: number = Math.pow(2, 31) - 1;
@@ -20,9 +22,14 @@ export function Signer(obj: any): boolean {
   );
 }
 
-const SATOSHI_MAX: number = 21 * 1e14;
-export function Satoshi(value: number): boolean {
-  return typeforce.UInt53(value) && value <= SATOSHI_MAX;
+const SATOSHI_MAX: BigNumber = new BigNumber('1e+18'); // Max doge in a tx is 10 B
+export function Satoshi(value: BigNumber): boolean {
+  return (
+    typeof value !== 'undefined' &&
+    value instanceof BigNumber &&
+    value.gte(0) &&
+    value.lte(SATOSHI_MAX)
+  );
 }
 
 // external dependent types

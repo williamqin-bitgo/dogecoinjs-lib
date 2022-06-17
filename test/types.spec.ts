@@ -1,4 +1,5 @@
 import * as assert from 'assert';
+import BigNumber from 'bignumber.js';
 import { describe, it } from 'mocha';
 import * as types from '../src/types';
 const typeforce = require('typeforce');
@@ -42,12 +43,12 @@ describe('types', () => {
 
   describe('Satoshi', () => {
     [
-      { value: -1, result: false },
-      { value: 0, result: true },
-      { value: 1, result: true },
-      { value: 20999999 * 1e8, result: true },
-      { value: 21000000 * 1e8, result: true },
-      { value: 21000001 * 1e8, result: false },
+      { value: new BigNumber(-1), result: false },
+      { value: new BigNumber(0), result: true },
+      { value: new BigNumber(1), result: true },
+      { value: new BigNumber('999999999999999999'), result: true },
+      { value: new BigNumber('1000000000000000000'), result: true },
+      { value: new BigNumber('1000000000000000001'), result: false },
     ].forEach(f => {
       it('returns ' + f.result + ' for valid for ' + f.value, () => {
         assert.strictEqual(types.Satoshi(f.value), f.result);

@@ -1,9 +1,16 @@
 import * as assert from 'assert';
+import BigNumber from 'bignumber.js';
+import * as fs from 'fs';
+import * as JSONBig from 'json-bigint';
 import { describe, it } from 'mocha';
+import * as path from 'path';
 import * as bufferutils from '../src/bufferutils';
 import { BufferReader, BufferWriter } from '../src/bufferutils';
 
-import * as fixtures from './fixtures/bufferutils.json';
+const rawFixture = fs.readFileSync(
+  path.resolve(__dirname, `./fixtures/bufferutils.json`),
+);
+const fixtures = JSONBig.parse(rawFixture.toString());
 const varuint = require('varuint-bitcoin');
 
 describe('bufferutils', () => {
@@ -12,16 +19,16 @@ describe('bufferutils', () => {
   }
 
   describe('readUInt64LE', () => {
-    fixtures.valid.forEach(f => {
+    fixtures.valid.forEach((f: any) => {
       it('decodes ' + f.hex, () => {
         const buffer = Buffer.from(f.hex, 'hex');
         const num = bufferutils.readUInt64LE(buffer, 0);
 
-        assert.strictEqual(num, f.dec);
+        assert.ok(num.eq(f.dec));
       });
     });
 
-    fixtures.invalid.readUInt64LE.forEach(f => {
+    fixtures.invalid.readUInt64LE.forEach((f: any) => {
       it('throws on ' + f.description, () => {
         const buffer = Buffer.from(f.hex, 'hex');
 
@@ -33,21 +40,21 @@ describe('bufferutils', () => {
   });
 
   describe('writeUInt64LE', () => {
-    fixtures.valid.forEach(f => {
+    fixtures.valid.forEach((f: any) => {
       it('encodes ' + f.dec, () => {
         const buffer = Buffer.alloc(8, 0);
 
-        bufferutils.writeUInt64LE(buffer, f.dec, 0);
+        bufferutils.writeUInt64LE(buffer, new BigNumber(f.dec), 0);
         assert.strictEqual(buffer.toString('hex'), f.hex);
       });
     });
 
-    fixtures.invalid.writeUInt64LE.forEach(f => {
+    fixtures.invalid.writeUInt64LE.forEach((f: any) => {
       it('throws on ' + f.description, () => {
         const buffer = Buffer.alloc(8, 0);
 
         assert.throws(() => {
-          bufferutils.writeUInt64LE(buffer, f.dec, 0);
+          bufferutils.writeUInt64LE(buffer, new BigNumber(f.dec), 0);
         }, new RegExp(f.exception));
       });
     });
@@ -134,7 +141,7 @@ describe('bufferutils', () => {
         1,
         Math.pow(2, 32),
         Number.MAX_SAFE_INTEGER /* 2^53 - 1 */,
-      ];
+      ].map(value => new BigNumber(value));
       const expectedBuffer = concatToBuffer([
         [0, 0, 0, 0, 0, 0, 0, 0],
         [1, 0, 0, 0, 0, 0, 0, 0],
@@ -144,7 +151,7 @@ describe('bufferutils', () => {
       const bufferWriter = new BufferWriter(
         Buffer.allocUnsafe(expectedBuffer.length),
       );
-      values.forEach((value: number) => {
+      values.forEach((value: BigNumber) => {
         const expectedOffset = bufferWriter.offset + 8;
         bufferWriter.writeUInt64(value);
         testBuffer(bufferWriter, expectedBuffer, expectedOffset);
@@ -282,20 +289,23 @@ describe('bufferutils', () => {
   describe('BufferReader', () => {
     function testValue(
       bufferReader: BufferReader,
-      value: Buffer | number,
-      expectedValue: Buffer | number,
+      value: Buffer | BigNumber | number,
+      expectedValue: Buffer | BigNumber | number,
       expectedOffset: number = Buffer.isBuffer(expectedValue)
         ? expectedValue.length
         : 0,
     ): void {
+      assert.strictEqual(typeof value, typeof expectedValue);
       assert.strictEqual(bufferReader.offset, expectedOffset);
       if (Buffer.isBuffer(expectedValue)) {
         assert.deepStrictEqual(
           (value as Buffer).slice(0, expectedOffset),
           expectedValue.slice(0, expectedOffset),
         );
-      } else {
+      } else if (typeof expectedValue === 'number') {
         assert.strictEqual(value as number, expectedValue);
+      } else {
+        assert.ok(expectedValue.eq(value as BigNumber));
       }
     }
 
@@ -358,7 +368,7 @@ describe('bufferutils', () => {
         1,
         Math.pow(2, 32),
         Number.MAX_SAFE_INTEGER /* 2^53 - 1 */,
-      ];
+      ].map(value => new BigNumber(value));
       const buffer = concatToBuffer([
         [0, 0, 0, 0, 0, 0, 0, 0],
         [1, 0, 0, 0, 0, 0, 0, 0],
@@ -366,7 +376,7 @@ describe('bufferutils', () => {
         [0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x1f, 0x00],
       ]);
       const bufferReader = new BufferReader(buffer);
-      values.forEach((value: number) => {
+      values.forEach((value: BigNumber) => {
         const expectedOffset = bufferReader.offset + 8;
         const val = bufferReader.readUInt64();
         testValue(bufferReader, val, value, expectedOffset);

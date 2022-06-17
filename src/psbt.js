@@ -1,6 +1,7 @@
 'use strict';
 Object.defineProperty(exports, '__esModule', { value: true });
 exports.Psbt = void 0;
+const bignumber_js_1 = require('bignumber.js');
 const bip174_1 = require('bip174');
 const varuint = require('bip174/src/lib/converter/varint');
 const utils_1 = require('bip174/src/lib/utils');
@@ -136,7 +137,7 @@ class Psbt {
       } catch (_) {}
       return {
         script: (0, bufferutils_1.cloneBuffer)(output.script),
-        value: output.value,
+        value: output.value.toNumber(),
         address,
       };
     });
@@ -659,7 +660,7 @@ class PsbtTransaction {
     ) {
       throw new Error('Error adding output.');
     }
-    this.tx.addOutput(output.script, output.value);
+    this.tx.addOutput(output.script, new bignumber_js_1.default(output.value));
   }
   toBuffer() {
     return this.tx.toBuffer();
@@ -960,7 +961,10 @@ function getHashForSig(inputIndex, input, cache, forValidate, sighashTypes) {
     const prevoutIndex = unsignedTx.ins[inputIndex].index;
     prevout = nonWitnessUtxoTx.outs[prevoutIndex];
   } else if (input.witnessUtxo) {
-    prevout = input.witnessUtxo;
+    prevout = {
+      script: input.witnessUtxo.script,
+      value: new bignumber_js_1.default(input.witnessUtxo.value),
+    };
   } else {
     throw new Error('Need a Utxo input item for signing');
   }
@@ -1247,10 +1251,13 @@ function inputFinalizeGetAmts(inputs, tx, cache, mustFinalize) {
       const nwTx = nonWitnessUtxoTxFromCache(cache, input, idx);
       const vout = tx.ins[idx].index;
       const out = nwTx.outs[vout];
-      inputAmount += out.value;
+      inputAmount += out.value.toNumber();
     }
   });
-  const outputAmount = tx.outs.reduce((total, o) => total + o.value, 0);
+  const outputAmount = tx.outs.reduce(
+    (total, o) => total + o.value.toNumber(),
+    0,
+  );
   const fee = inputAmount - outputAmount;
   if (fee < 0) {
     throw new Error('Outputs are spending more than Inputs');
