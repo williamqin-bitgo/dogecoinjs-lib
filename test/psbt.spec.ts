@@ -1114,13 +1114,13 @@ describe(`Psbt`, () => {
       assert.strictEqual(output.address, address);
 
       assert.ok(output.script.equals(internalInput.script));
-      assert.strictEqual(output.value, internalInput.value);
+      assert.strictEqual(output.value, Number(internalInput.value));
 
       output.script[0] = 123;
       output.value = 123;
 
       assert.ok(!output.script.equals(internalInput.script));
-      assert.notEqual(output.value, internalInput.value);
+      assert.notEqual(output.value, Number(internalInput.value));
     });
   });
 });

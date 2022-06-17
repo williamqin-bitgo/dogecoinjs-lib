@@ -20,9 +20,9 @@ export function Signer(obj: any): boolean {
   );
 }
 
-const SATOSHI_MAX: number = 21 * 1e14;
-export function Satoshi(value: number): boolean {
-  return typeforce.UInt53(value) && value <= SATOSHI_MAX;
+const SATOSHI_MAX: bigint = BigInt('1000000000000000000'); // Max doge in a tx is 10 B
+export function Satoshi(value: bigint): boolean {
+  return typeof value === 'bigint' && value >= 0 && value <= SATOSHI_MAX;
 }
 
 // external dependent types

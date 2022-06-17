@@ -314,12 +314,15 @@ class TransactionBuilder {
   }
   __overMaximumFees(bytes) {
     // not all inputs will have .value defined
-    const incoming = this.__INPUTS.reduce((a, x) => a + (x.value >>> 0), 0);
+    const incoming = this.__INPUTS.reduce(
+      (a, x) => a + (x.value ? x.value : BigInt(0)),
+      BigInt(0),
+    );
     // but all outputs do, and if we have any input value
     // we can immediately determine if the outputs are too small
-    const outgoing = this.__TX.outs.reduce((a, x) => a + x.value, 0);
+    const outgoing = this.__TX.outs.reduce((a, x) => a + x.value, BigInt(0));
     const fee = incoming - outgoing;
-    const feeRate = fee / bytes;
+    const feeRate = fee / BigInt(bytes);
     return feeRate > this.maximumFeeRate;
   }
 }
@@ -1111,12 +1114,12 @@ function checkSignArgs(inputs, signParams) {
       tfMessage(
         typeforce.Buffer,
         signParams.redeemScript,
-        `${posType} requires witnessScript`,
+        `${posType} requires redeemScript`,
       );
       tfMessage(
         types.Satoshi,
         signParams.witnessValue,
-        `${posType} requires witnessScript`,
+        `${posType} requires witnessValue`,
       );
       break;
     case 'p2tr':

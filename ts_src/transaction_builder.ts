@@ -52,7 +52,7 @@ type TxbScriptType = string;
 type TxbScript = Buffer;
 
 interface TxbInput {
-  value?: number;
+  value?: bigint;
   witnessVersion?: number;
   signScript?: TxbScript;
   signType?: TxbScriptType;
@@ -86,7 +86,7 @@ interface TxbSignArg {
   keyPair: Signer;
   redeemScript?: Buffer;
   hashType?: number;
-  witnessValue?: number;
+  witnessValue?: bigint;
   witnessScript?: Buffer;
   controlBlock?: Buffer;
   annex?: Buffer;
@@ -204,7 +204,7 @@ export class TransactionBuilder {
     vout: number,
     sequence?: number,
     prevOutScript?: Buffer,
-    value?: number,
+    value?: bigint,
   ): number {
     if (!this.__canModifyInputs()) {
       throw new Error('No, this would invalidate signatures');
@@ -231,7 +231,7 @@ export class TransactionBuilder {
     });
   }
 
-  addOutput(scriptPubKey: string | Buffer, value: number): number {
+  addOutput(scriptPubKey: string | Buffer, value: bigint): number {
     if (!this.__canModifyOutputs()) {
       throw new Error('No, this would invalidate signatures');
     }
@@ -257,7 +257,7 @@ export class TransactionBuilder {
     keyPair?: Signer,
     redeemScript?: Buffer,
     hashType?: number,
-    witnessValue?: number,
+    witnessValue?: bigint,
     witnessScript?: Buffer,
     controlBlock?: Buffer,
     annex?: Buffer,
@@ -438,16 +438,19 @@ export class TransactionBuilder {
 
   private __overMaximumFees(bytes: number): boolean {
     // not all inputs will have .value defined
-    const incoming = this.__INPUTS.reduce((a, x) => a + (x.value! >>> 0), 0);
+    const incoming = this.__INPUTS.reduce(
+      (a, x) => a + (x.value ? x.value : BigInt(0)),
+      BigInt(0),
+    );
 
     // but all outputs do, and if we have any input value
     // we can immediately determine if the outputs are too small
     const outgoing = this.__TX.outs.reduce(
       (a, x) => a + (x as Output).value,
-      0,
+      BigInt(0),
     );
     const fee = incoming - outgoing;
-    const feeRate = fee / bytes;
+    const feeRate = fee / BigInt(bytes);
 
     return feeRate > this.maximumFeeRate;
   }
@@ -1361,12 +1364,12 @@ function checkSignArgs(inputs: TxbInput[], signParams: TxbSignArg): void {
       tfMessage(
         typeforce.Buffer,
         signParams.redeemScript,
-        `${posType} requires witnessScript`,
+        `${posType} requires redeemScript`,
       );
       tfMessage(
         types.Satoshi,
         signParams.witnessValue,
-        `${posType} requires witnessScript`,
+        `${posType} requires witnessValue`,
       );
       break;
     case 'p2tr':
@@ -1496,7 +1499,7 @@ function getSigningData(
   keyPair?: Signer,
   redeemScript?: Buffer,
   hashType?: number,
-  witnessValue?: number,
+  witnessValue?: bigint,
   witnessScript?: Buffer,
   controlBlock?: Buffer,
   annex?: Buffer,
@@ -1602,7 +1605,7 @@ function getSigningData(
       signatureHash = tx.hashForWitnessV0(
         vin,
         input.signScript as Buffer,
-        input.value as number,
+        input.value as bigint,
         hashType,
       );
       break;
@@ -1610,7 +1613,7 @@ function getSigningData(
       signatureHash = tx.hashForWitnessV1(
         vin,
         inputs.map(({ prevOutScript }) => prevOutScript as Buffer),
-        inputs.map(({ value }) => value as number),
+        inputs.map(({ value }) => value as bigint),
         hashType,
         leafHash,
       );

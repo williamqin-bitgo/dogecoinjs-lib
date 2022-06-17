@@ -221,7 +221,7 @@ describe('Bitcoin-core', () => {
             transaction.hashForWitnessV0(
               inIndex,
               script,
-              0,
+              BigInt(0),
               // convert to UInt32
               hashType < 0 ? 0x100000000 + hashType : hashType,
             ),
@@ -230,7 +230,7 @@ describe('Bitcoin-core', () => {
           const res = transaction.hashForWitnessV1(
             inIndex,
             transaction.ins.map(s => s.script),
-            transaction.ins.map(_ => 0),
+            transaction.ins.map(_ => BigInt(0)),
             Transaction.SIGHASH_ALL,
           );
           console.log({ res, expectedHashSchnorr });
