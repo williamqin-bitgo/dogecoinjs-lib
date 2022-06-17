@@ -136,7 +136,7 @@ class Psbt {
       } catch (_) {}
       return {
         script: (0, bufferutils_1.cloneBuffer)(output.script),
-        value: output.value,
+        value: Number(output.value),
         address,
       };
     });
@@ -659,7 +659,7 @@ class PsbtTransaction {
     ) {
       throw new Error('Error adding output.');
     }
-    this.tx.addOutput(output.script, output.value);
+    this.tx.addOutput(output.script, BigInt(output.value));
   }
   toBuffer() {
     return this.tx.toBuffer();
@@ -960,7 +960,10 @@ function getHashForSig(inputIndex, input, cache, forValidate, sighashTypes) {
     const prevoutIndex = unsignedTx.ins[inputIndex].index;
     prevout = nonWitnessUtxoTx.outs[prevoutIndex];
   } else if (input.witnessUtxo) {
-    prevout = input.witnessUtxo;
+    prevout = {
+      script: input.witnessUtxo.script,
+      value: BigInt(input.witnessUtxo.value),
+    };
   } else {
     throw new Error('Need a Utxo input item for signing');
   }
@@ -1247,10 +1250,10 @@ function inputFinalizeGetAmts(inputs, tx, cache, mustFinalize) {
       const nwTx = nonWitnessUtxoTxFromCache(cache, input, idx);
       const vout = tx.ins[idx].index;
       const out = nwTx.outs[vout];
-      inputAmount += out.value;
+      inputAmount += Number(out.value);
     }
   });
-  const outputAmount = tx.outs.reduce((total, o) => total + o.value, 0);
+  const outputAmount = tx.outs.reduce((total, o) => total + Number(o.value), 0);
   const fee = inputAmount - outputAmount;
   if (fee < 0) {
     throw new Error('Outputs are spending more than Inputs');

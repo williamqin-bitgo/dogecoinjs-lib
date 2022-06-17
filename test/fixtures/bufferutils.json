@@ -55,47 +55,36 @@
     {
       "dec": 9007199254740991,
       "hex": "ffffffffffff1f00"
+    },
+    {
+      "dec": "9223372036854775808",
+      "hex": "0000000000000080"
+    },
+    {
+      "dec": "18446744073709551615",
+      "hex": "ffffffffffffffff"
     }
   ],
   "invalid": {
-    "readUInt64LE": [
-      {
-        "description": "n === 2^53",
-        "exception": "RangeError: value out of range",
-        "hex": "0000000000002000",
-        "dec": 9007199254740992
-      },
-      {
-        "description": "n > 2^53",
-        "exception": "RangeError: value out of range",
-        "hex": "0100000000002000",
-        "dec": 9007199254740993
-      }
-    ],
+    "readUInt64LE": [],
     "writeUInt64LE": [
       {
-        "description": "n === 2^53",
+        "description": "n === 2^64",
         "exception": "RangeError: value out of range",
-        "hex": "0000000000002000",
-        "dec": 9007199254740992
+        "hex": "000000000000000001",
+        "dec": "18446744073709551616"
       },
       {
-        "description": "n > 2^53",
+        "description": "n > 2^64",
         "exception": "RangeError: value out of range",
-        "hex": "0100000000002000",
-        "dec": 9007199254740993
+        "hex": "ff0000000000000001",
+        "dec": "18446744073709551871"
       },
       {
         "description": "n < 0",
         "exception": "specified a negative value for writing an unsigned value",
         "hex": "",
         "dec": -1
-      },
-      {
-        "description": "0 < n < 1",
-        "exception": "value has a fractional component",
-        "hex": "",
-        "dec": 0.1
       }
     ]
   }

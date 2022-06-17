@@ -11,7 +11,7 @@ function check(chunks) {
     // this indicates whether `chunks` is a valid taproot input
     taproot.parseTaprootWitness(chunks);
     return true;
-  } catch (_a) {
+  } catch {
     return false;
   }
 }

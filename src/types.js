@@ -22,9 +22,9 @@ function Signer(obj) {
   );
 }
 exports.Signer = Signer;
-const SATOSHI_MAX = 21 * 1e14;
+const SATOSHI_MAX = BigInt('1000000000000000000'); // Max doge in a tx is 10 B
 function Satoshi(value) {
-  return typeforce.UInt53(value) && value <= SATOSHI_MAX;
+  return typeof value === 'bigint' && value >= 0 && value <= SATOSHI_MAX;
 }
 exports.Satoshi = Satoshi;
 // external dependent types

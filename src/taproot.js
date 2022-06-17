@@ -218,7 +218,7 @@ function getHuffmanTaptree(scripts, weights) {
     queue.add({
       taggedHash: hashTapBranch(child1.taggedHash, child2.taggedHash),
       weight: child1.weight + child2.weight,
-      paths: Object.assign(Object.assign({}, child1.paths), child2.paths),
+      paths: { ...child1.paths, ...child2.paths },
     });
   }
   // After the while loop above completes we should have exactly one element

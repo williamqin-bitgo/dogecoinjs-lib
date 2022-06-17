@@ -71,6 +71,7 @@
     "@types/bn.js": "^5.1.0",
     "@types/bs58": "^4.0.0",
     "@types/elliptic": "^6.4.13",
+    "@types/json-bigint": "^1.0.1",
     "@types/mocha": "^5.2.7",
     "@types/node": "12.7.5",
     "@types/proxyquire": "^1.3.28",

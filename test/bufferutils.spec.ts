@@ -12,16 +12,16 @@ describe('bufferutils', () => {
   }
 
   describe('readUInt64LE', () => {
-    fixtures.valid.forEach(f => {
+    fixtures.valid.forEach((f: any) => {
       it('decodes ' + f.hex, () => {
         const buffer = Buffer.from(f.hex, 'hex');
         const num = bufferutils.readUInt64LE(buffer, 0);
 
-        assert.strictEqual(num, f.dec);
+        assert.strictEqual(num, BigInt(f.dec));
       });
     });
 
-    fixtures.invalid.readUInt64LE.forEach(f => {
+    fixtures.invalid.readUInt64LE.forEach((f: any) => {
       it('throws on ' + f.description, () => {
         const buffer = Buffer.from(f.hex, 'hex');
 
@@ -33,21 +33,21 @@ describe('bufferutils', () => {
   });
 
   describe('writeUInt64LE', () => {
-    fixtures.valid.forEach(f => {
+    fixtures.valid.forEach((f: any) => {
       it('encodes ' + f.dec, () => {
         const buffer = Buffer.alloc(8, 0);
 
-        bufferutils.writeUInt64LE(buffer, f.dec, 0);
+        bufferutils.writeUInt64LE(buffer, BigInt(f.dec), 0);
         assert.strictEqual(buffer.toString('hex'), f.hex);
       });
     });
 
-    fixtures.invalid.writeUInt64LE.forEach(f => {
+    fixtures.invalid.writeUInt64LE.forEach((f: any) => {
       it('throws on ' + f.description, () => {
         const buffer = Buffer.alloc(8, 0);
 
         assert.throws(() => {
-          bufferutils.writeUInt64LE(buffer, f.dec, 0);
+          bufferutils.writeUInt64LE(buffer, BigInt(f.dec), 0);
         }, new RegExp(f.exception));
       });
     });
@@ -134,7 +134,7 @@ describe('bufferutils', () => {
         1,
         Math.pow(2, 32),
         Number.MAX_SAFE_INTEGER /* 2^53 - 1 */,
-      ];
+      ].map(value => BigInt(value));
       const expectedBuffer = concatToBuffer([
         [0, 0, 0, 0, 0, 0, 0, 0],
         [1, 0, 0, 0, 0, 0, 0, 0],
@@ -144,7 +144,7 @@ describe('bufferutils', () => {
       const bufferWriter = new BufferWriter(
         Buffer.allocUnsafe(expectedBuffer.length),
       );
-      values.forEach((value: number) => {
+      values.forEach((value: bigint) => {
         const expectedOffset = bufferWriter.offset + 8;
         bufferWriter.writeUInt64(value);
         testBuffer(bufferWriter, expectedBuffer, expectedOffset);
@@ -282,12 +282,13 @@ describe('bufferutils', () => {
   describe('BufferReader', () => {
     function testValue(
       bufferReader: BufferReader,
-      value: Buffer | number,
-      expectedValue: Buffer | number,
+      value: Buffer | bigint | number,
+      expectedValue: Buffer | bigint | number,
       expectedOffset: number = Buffer.isBuffer(expectedValue)
         ? expectedValue.length
         : 0,
     ): void {
+      assert.strictEqual(typeof value, typeof expectedValue);
       assert.strictEqual(bufferReader.offset, expectedOffset);
       if (Buffer.isBuffer(expectedValue)) {
         assert.deepStrictEqual(
@@ -295,7 +296,7 @@ describe('bufferutils', () => {
           expectedValue.slice(0, expectedOffset),
         );
       } else {
-        assert.strictEqual(value as number, expectedValue);
+        assert.strictEqual(value, expectedValue);
       }
     }
 
@@ -358,7 +359,7 @@ describe('bufferutils', () => {
         1,
         Math.pow(2, 32),
         Number.MAX_SAFE_INTEGER /* 2^53 - 1 */,
-      ];
+      ].map(value => BigInt(value));
       const buffer = concatToBuffer([
         [0, 0, 0, 0, 0, 0, 0, 0],
         [1, 0, 0, 0, 0, 0, 0, 0],
@@ -366,7 +367,7 @@ describe('bufferutils', () => {
         [0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x1f, 0x00],
       ]);
       const bufferReader = new BufferReader(buffer);
-      values.forEach((value: number) => {
+      values.forEach((value: bigint) => {
         const expectedOffset = bufferReader.offset + 8;
         const val = bufferReader.readUInt64();
         testValue(bufferReader, val, value, expectedOffset);
