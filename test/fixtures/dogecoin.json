@@ -1,0 +1,58 @@
+{
+  "valid": {
+    "build": [
+      {
+        "network": "testnet",
+        "description": "Transaction w/ P2PKH -> P2PKH (1 output)",
+        "txHex": "0200000001fe4b793d68f1237dbb954d53d6002ca9d887bf559e31f04bbceedb2e0cfdb657000000006b4830450221008b9a69f1e86652204591a3f4aef57748c9caa25cc66bf6eda6eede00b7c17a0a02203e448ad724eb39a4819555ce08ce7b1a6a7c6ea72bf3adb76b6ca0be1fc51af4012102ab3be7a4ed9587ef30d2cde5833663cf15a09c81937152429a00fb4029054bd2ffffffff010003164e020000001976a9140e74e05477d613de302feb89ded51145659037e188ac00000000",
+        "version": 1,
+        "inputs": [
+          {
+            "txId": "57b6fd0c2edbeebc4bf0319e55bf87d8a92c00d6534d95bb7d23f1683d794bfe",
+            "vout": 0,
+            "signs": [
+              {
+                "prevOutScriptType": "p2pkh",
+                "keyPair": "cmXQWN4sLAiMnzNRTb8YjRGsk6mmD8JSfbnEskTAG5PC8T4zQBV1"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "script": "OP_DUP OP_HASH160 0e74e05477d613de302feb89ded51145659037e1 OP_EQUALVERIFY OP_CHECKSIG",
+            "value": 9900000000
+          }
+        ]
+      },
+      {
+        "network": "testnet",
+        "description": "Transaction w/ P2PKH -> P2PKH (2 outputs)",
+        "txHex": "0200000001fe4b793d68f1237dbb954d53d6002ca9d887bf559e31f04bbceedb2e0cfdb657000000006b4830450221009e85e1ab1549799249ab1babe3fe14eb5b6dd0d73f0a18ca873e2f4e18e04202022024b56600d69035ad2b7374cfdca22dd3067e5cb1d70a829874013ff979ee915e012102ab3be7a4ed9587ef30d2cde5833663cf15a09c81937152429a00fb4029054bd2ffffffff0200111024010000001976a9142fc9cbdbfde27defe712896bff166d7fd96295c088ac00f2052a010000001976a914337aedffc14be2c41ef58c3be8d62361414dc95888ac00000000",
+        "version": 1,
+        "inputs": [
+          {
+            "txId": "57b6fd0c2edbeebc4bf0319e55bf87d8a92c00d6534d95bb7d23f1683d794bfe",
+            "vout": 0,
+            "signs": [
+              {
+                "prevOutScriptType": "p2pkh",
+                "keyPair": "cmXQWN4sLAiMnzNRTb8YjRGsk6mmD8JSfbnEskTAG5PC8T4zQBV1"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "script": "OP_DUP OP_HASH160 2fc9cbdbfde27defe712896bff166d7fd96295c0 OP_EQUALVERIFY OP_CHECKSIG",
+            "value": 4900000000
+          },
+          {
+            "script": "OP_DUP OP_HASH160 337aedffc14be2c41ef58c3be8d62361414dc958 OP_EQUALVERIFY OP_CHECKSIG",
+            "value": 5000000000
+          }
+        ]
+      }
+    ]
+  }
+}
