@@ -1,17 +1,18 @@
 'use strict';
 Object.defineProperty(exports, '__esModule', { value: true });
-exports.BufferReader = exports.BufferWriter = exports.cloneBuffer = exports.reverseBuffer = exports.writeUInt64LE = exports.readUInt64LE = void 0;
+exports.BufferReader = exports.BufferWriter = exports.cloneBuffer = exports.reverseBuffer = exports.writeUInt64LE = exports.readUInt64BigIntLE = exports.readUInt64LE = void 0;
 const types = require('./types');
 const typeforce = require('typeforce');
 const varuint = require('varuint-bitcoin');
 // https://github.com/feross/buffer/blob/master/index.js#L1127
 function verifuint(value, max) {
-  if (typeof value !== 'number')
-    throw new Error('cannot write a non-number as a number');
+  if (typeof value !== 'number' && typeof value !== 'bigint')
+    throw new Error('value must be a number or bigint');
   if (value < 0)
     throw new Error('specified a negative value for writing an unsigned value');
   if (value > max) throw new Error('RangeError: value out of range');
-  if (Math.floor(value) !== value)
+  if (typeof value === 'number' && Math.floor(value) !== value)
+    // bigint is enforced int
     throw new Error('value has a fractional component');
 }
 function readUInt64LE(buffer, offset) {
@@ -22,10 +23,31 @@ function readUInt64LE(buffer, offset) {
   return b + a;
 }
 exports.readUInt64LE = readUInt64LE;
+function readUInt64BigIntLE(buffer, offset) {
+  const a = BigInt(buffer.readUInt32LE(offset));
+  let b = BigInt(buffer.readUInt32LE(offset + 4));
+  b *= BigInt('0x100000000');
+  verifuint(b + a, BigInt('0xffffffffffffffff'));
+  return b + a;
+}
+exports.readUInt64BigIntLE = readUInt64BigIntLE;
 function writeUInt64LE(buffer, value, offset) {
-  verifuint(value, 0x001fffffffffffff);
-  buffer.writeInt32LE(value & -1, offset);
-  buffer.writeUInt32LE(Math.floor(value / 0x100000000), offset + 4);
+  if (typeof value === 'number') {
+    verifuint(value, 0x001fffffffffffff);
+    buffer.writeInt32LE(value & -1, offset);
+    buffer.writeUInt32LE(Math.floor(value / 0x100000000), offset + 4);
+  } else if (typeof value === 'bigint') {
+    verifuint(value, BigInt('0xffffffffffffffff'));
+    // Little endian - write 32 least significant bits first
+    buffer.writeUInt32LE(Number(BigInt.asUintN(32, value)), offset);
+    // Now write 32 most significant bits
+    buffer.writeUInt32LE(
+      Number(BigInt.asUintN(32, value / BigInt('0x100000000'))),
+      offset + 4,
+    );
+  } else {
+    throw new Error('value must be a number or bigint');
+  }
   return offset + 8;
 }
 exports.writeUInt64LE = writeUInt64LE;
@@ -124,6 +146,11 @@ class BufferReader {
   }
   readUInt64() {
     const result = readUInt64LE(this.buffer, this.offset);
+    this.offset += 8;
+    return result;
+  }
+  readUInt64BigInt() {
+    const result = readUInt64BigIntLE(this.buffer, this.offset);
     this.offset += 8;
     return result;
   }
